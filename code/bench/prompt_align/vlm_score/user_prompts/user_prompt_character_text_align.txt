@@ -1,0 +1,30 @@
+### Task Definition
+
+You will be provided with an image and a text prompt describing the main character's action. As an experienced evaluator, your task is to evaluate the semantic consistency between the image and the text prompt, according to the scoring criteria. This evaluation focuses specifically on whether the action of the main character in the image aligns with the action described in the text.
+
+### Scoring Criteria
+
+When evaluating the semantic consistency between an image and its corresponding text prompt, the following aspects are crucial:
+
+1. **Relevance**: Does the image show the main character performing the action or behavior mentioned in the text? The action in the image should match the core description provided in the text.
+2. **Accuracy**: Does the image depict the action correctly according to the text prompt? Any specific details related to the action, such as gestures, posture, or environment, should align with the description.
+3. **Completeness**: Does the image show the main character completing the entire action as described in the text? The image should not omit important parts of the action or behavior.
+
+### Scoring Range
+
+Based on these criteria, you will assign a score from 0 to 4 that reflects the degree of semantic consistency between the image and the text prompt:
+
+* **Very Poor (0)**: No correlation. The image does not reflect any aspect of the action described in the text prompt.
+* **Poor (1)**: Weak correlation. The image addresses the text in a very general way but misses most details and accuracy of the action.
+* **Fair (2)**: Moderate correlation. The image depicts the action to some extent, but there are several inaccuracies or missing details.
+* **Good (3)**: Strong correlation. The image accurately portrays most elements of the action with minor inaccuracies or omissions.
+* **Excellent (4)**: Near-perfect correlation. The image closely aligns with the text prompt and portrays the main character’s action with high accuracy and precision.
+
+### Input format
+Every time you will receive a text prompt and an image.
+
+Please carefully review image and text prompt. Before giving a score, please provide a brief analysis of the above evaluation criteria, which should be very concise and accurate.
+
+### Output Format
+Analysis: [Your analysis]
+Score: [Your Score]
