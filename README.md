@@ -2,6 +2,7 @@
 
 **This repository is the official repository of the paper *ViStoryBench: Comprehensive Benchmark Suite for Story Visualization*.**
 
+Welcome to our [ViStoryBench](https://vistorybench.github.io/) page!!!
 
 ![ViStoryBench](./asset/ViStoryBench_logo.png)
 
@@ -23,17 +24,17 @@ pip install -r requirements.txt
 
 ## Dataset Preparation
 
-### About WildStory🐻
+### About Datasets🐻
 **80** stories, both *Chinese* and *English*,
 including **Plot Correspondence**, **Setting Description**, **Shot Perspective Design**, **Characters Appearing** and **Static Shot Description**
 
 ### Download...
-📥 Download our [WildStory](https://huggingface.co/datasets/Stepfun/WildStory) (🤗huggingface) dataset
+📥 Download our [ViStoryBench Datasets](https://huggingface.co/datasets/ViStoryBench/ViStoryBench) (🤗huggingface) dataset
 and put it into your local path
 ```bash
 </path/to/your/dataset>
 # example
-data/dataset/WildStory
+./data/dataset/
 ```
 
 
