@@ -214,9 +214,6 @@ sh bench_run.sh 'doubao' --csd_cross --csd_self --aesthetic --diversity
 sh bench_run.sh 'naive_baseline' --csd_cross --csd_self --aesthetic --diversity --cref --prompt_align2 
 ```
 
-alias oss-b="aws --endpoint-url=http://oss.i.shaipower.com s3 --profile default"
-oss-b ls s3://liaoxinyao-data/results/bmk/
-oss sync s3://liaoxinyao-data/results/bmk/TheaterGen/ /data/AIGC_Research/Story_Telling/StoryVisBMK/data/outputs/theatergen
 
 使用一个全局配置文件（例如 config.yaml）来管理共享信息：
 模型路径 (ArcFace, CLIP, VLM models, Aesthetic Predictor)
