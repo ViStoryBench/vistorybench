@@ -25,8 +25,12 @@ pip install -r requirements.txt
 ## Dataset Preparation
 
 ### About Datasets🐻
-**80** stories, both *Chinese* and *English*,
-including **Plot Correspondence**, **Setting Description**, **Shot Perspective Design**, **Characters Appearing** and **Static Shot Description**
+
+**80** stories and **344** characters, both *Chinese* and *English*,
+
+Each story included **Plot Correspondence**, **Setting Description**, **Shot Perspective Design**, **Characters Appearing** and **Static Shot Description**
+
+Each character included at least one **inference image** and corresponding **prompt description**.
 
 ### Download...
 📥 Download our [ViStoryBench Datasets](https://huggingface.co/datasets/ViStoryBench/ViStoryBench) (🤗huggingface) dataset
