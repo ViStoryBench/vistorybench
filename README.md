@@ -4,7 +4,7 @@
 
 Welcome to our [ViStoryBench](https://vistorybench.github.io/) page!!!
 
-![ViStoryBench](./asset/ViStoryBench_logo.png)
+![ViStoryBench](./asset/vistorybench_teaser.jpg)
 
 
 ## Download
