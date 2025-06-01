@@ -15,7 +15,9 @@
 
 # Overview
 
-<video src="./assets/vistorybench-demo-1080.mp4" controls="controls"></video>
+
+
+https://github.com/user-attachments/assets/37116cea-3005-4b40-9cd3-39873a157074
 <p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
 
 
