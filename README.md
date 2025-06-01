@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="asset/logo.png"  height=100>
+  <img src="assets/logo.png"  height=80>
 </div>
 <p align="center">
   <h1 align="center"><strong>ViStoryBench: Comprehensive Benchmark Suite<br> for Story Visualization</strong></h1>
@@ -13,9 +13,11 @@
 </div>
 
 
-# Highlight
+# Overview
 
-![ViStoryBench](./asset/vistorybench_teaser.jpg)
+[![Watch the demo](assets/vistorybench-teaser.jpg)](assets/vistorybench-demo-1080.mp4)
+<p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
+
 
 
 # Usage
