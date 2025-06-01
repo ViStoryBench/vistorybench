@@ -1,10 +1,19 @@
-# 🐻🐱ViStoryBench: Comprehensive Benchmark Suite for Story Visualization
+<div align="center">
+  <img src="asset/logo.png"  height=100>
+</div>
+<p align="center">
+  <h1 align="center"><strong>ViStoryBench: Comprehensive Benchmark Suite<br> for Story Visualization</strong></h1>
+<p align="center">
 
-**This repository is the official repository of the paper *ViStoryBench: Comprehensive Benchmark Suite for Story Visualization*.**
+<div align="center">
+  <a href="https://vistorybench.github.io/"><img src="https://img.shields.io/static/v1?label=Project%20Page&message=Web&color=green"></a> &ensp;
+  <a href="https://arxiv.org/abs/xxxx.xxxxx"><img src="https://img.shields.io/static/v1?label=Tech%20Report&message=Arxiv&color=red"></a> &ensp;
+  <a href="https://huggingface.co/datasets/ViStoryBench/ViStoryBench"><img src="https://img.shields.io/static/v1?label=Dataset&message=HuggingFace&color=yellow"></a> &ensp;
+  <a href="https://vistorybench.github.io/story_detail/"><img src="https://img.shields.io/static/v1?label=Browse%20Results&message=Web&color=green"></a> &ensp;
+</div>
 
-# Overview
 
-### 🐻Welcome to our [Homepage](https://vistorybench.github.io/) for more results!!!
+# Highlight
 
 ![ViStoryBench](./asset/vistorybench_teaser.jpg)
 
