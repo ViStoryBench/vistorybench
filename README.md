@@ -19,6 +19,11 @@ https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 <p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
 
 
+## 🚩 News
+- [ ] (Refining..) Release final code and complete project.
+- [ ] [2025/06/02] Upload paper.
+- [x] [2025/05/21] Init project and release code (semi-finished). 
+
 
 # Usage
 
