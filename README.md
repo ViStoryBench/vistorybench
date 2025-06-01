@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 
 ## 🚩 News
 - [ ] (Refining..) Release final code and complete project.
-- [ ] [2025/06/02] Upload paper.
+- [ ] [2025/06/02] Upload paper (arxiv).
 - [x] [2025/05/21] Init project and release code (semi-finished). 
 
 
