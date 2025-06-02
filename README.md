@@ -151,7 +151,7 @@ BUSINESS = ['moki', 'morphic_studio', 'bairimeng_ai', 'shenbimaliang', 'xunfeihu
 @article{zhuang2025vistorybench,
   title={ViStoryBench: Comprehensive Benchmark Suite for Story Visualization}, 
   author={Cailin Zhuang, Ailin Huang, Wei Cheng, Jingwei Wu, Yaoqi Hu, Jiaqi Liao, Zhewei Huang, Hongyuan Wang, Xinyao Liao, Weiwei Cai, Hengyuan Xu, Xuanyang Zhang, Xianfang Zeng, Gang Yu, Chi Zhang},
-  journal={arXiv preprint arxiv:xxxx.xxxxx}, 
+  journal={arXiv preprint arxiv:2505.24862}, 
   year={2025}
 }
 ```
