@@ -48,7 +48,7 @@ pip install -r requirements.txt
 
 **80** stories and **344** characters, both *Chinese* and *English*,
 
-Each story included **Plot Correspondence**, **Setting Description**, **Shot Perspective Design**, **Characters Appearing** and **Static Shot Description**
+Each story included **Plot Correspondence**, **Setting Description**, **Shot Perspective Design**, **On-Stage Characters** and **Static Shot Description**
 
 Each character included at least one **inference image** and corresponding **prompt description**.
 
