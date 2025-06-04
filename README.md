@@ -1,19 +1,14 @@
-<div align="center">
-  <img src="assets/logo.png"  height=80>
-</div>
-<p align="center">
-  <h1 align="center"><strong>ViStoryBench: Comprehensive Benchmark Suite<br> for Story Visualization</strong></h1>
-<p align="center">
+# Comprehensive Benchmark Suite for Story Visualization
 
-<div align="center">
-  <a href="https://vistorybench.github.io/"><img src="https://img.shields.io/static/v1?label=Project%20Page&message=Web&color=green"></a> &ensp;
+ <a href="https://vistorybench.github.io/"><img src="https://img.shields.io/static/v1?label=Project%20Page&message=Web&color=green"></a> &ensp;
   <a href="https://arxiv.org/abs/2505.24862"><img src="https://img.shields.io/static/v1?label=Tech%20Report&message=Arxiv&color=red"></a> &ensp;
   <a href="https://huggingface.co/datasets/ViStoryBench/ViStoryBench"><img src="https://img.shields.io/static/v1?label=Dataset&message=HuggingFace&color=yellow"></a> &ensp;
   <a href="https://vistorybench.github.io/story_detail/"><img src="https://img.shields.io/static/v1?label=Browse%20Results&message=Web&color=green"></a> &ensp;
-</div>
+![image](https://github.com/user-attachments/assets/461d95ca-51cf-4b16-a584-be5b36c904db)
 
+<p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
 
-# Overview
+https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 
 https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 <p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
