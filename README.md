@@ -55,21 +55,21 @@ Each character included at least one **inference image** and corresponding **pro
 ## 2. Dataset Adaptation 
 ### 2.1. Loading Dataset
 Use our standardized loading script 
-[`dataset_load.py`](https://github.com/ViStoryBench/vistorybench/blob/main/code/data_process/dataset_process/dataset_load.py) or your own data loader 
+[`dataset_load.py`](https://github.com/ViStoryBench/vistorybench/blob/main/vistorybench/data_process/dataset_process/dataset_load.py) or your own data loader 
 
 ```bash
-pyhton code/data_process/dataset_process/dataset_load.py
+pyhton vistorybench/data_process/dataset_process/dataset_load.py
 ```
 
 
 ### 2.2. Adapting and Running
 
 
-Based on [`dataset_load.py`](https://github.com/ViStoryBench/vistorybench/blob/main/code/data_process/dataset_process/dataset_load.py), convert ViStory/ViStory-lite dataset to your method's required input format (converted dataset will be saved to `/data/dataset_processed/your_method_name/`) and modify the inference code for story visualization (suggest generated results save to `/data/outputs/your_method_name/`).
+Based on [`dataset_load.py`](https://github.com/ViStoryBench/vistorybench/blob/main/vistorybench/data_process/dataset_process/dataset_load.py), convert ViStory/ViStory-lite dataset to your method's required input format (converted dataset will be saved to `/data/dataset_processed/your_method_name/`) and modify the inference vistorybench for story visualization (suggest generated results save to `/data/outputs/your_method_name/`).
 
 **Example of UNO:**
 ```bash
-python code/data_process/dataset_process/adapt2uno.py \
+python vistorybench/data_process/dataset_process/adapt2uno.py \
 --language 'en' # choice=['en','ch']
 ```
 
@@ -106,13 +106,13 @@ data/outputs/
 
 ### 3.2 Automated Reading
 When you run the evaluation code, it will automatically perform data reading (ensure both the ViStoryBench dataset and the generated results conform to the standard directory structure specified above). The generated-results reading code has been uniformly integrated into the following file:
-`code/data_process/outputs_read/read_outputs.py`
+`vistorybench/data_process/outputs_read/read_outputs.py`
 
 
 ## 4. Evaluation! 🐻
 **Example of UNO:**
 ```bash
-cd code/bench
+cd vistorybench/bench
 sh bench_run.sh 'uno' # Run it for data integrity check
 sh bench_run.sh 'uno' --all # Run it for all evaluation
 sh bench_run.sh 'uno' --cref # Run it for content consistency eval
