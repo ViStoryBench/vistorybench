@@ -1,8 +1,4 @@
 
-import sys
-code_path = '/data/AIGC_Research/Story_Telling/StoryVisBMK/code'
-sys.path.append(f'{code_path}/data_process/dataset_process/sd_embed/src/sd_embed')
-
 def prompt_weighted_encode(pipe, prompt, neg_prompt, model_type,**kwargs):
     import gc
 
@@ -10,7 +6,7 @@ def prompt_weighted_encode(pipe, prompt, neg_prompt, model_type,**kwargs):
     # neg_prompt = neg_prompt[0]
 
     if model_type == 'sd15':
-        from embedding_funcs import get_weighted_text_embeddings_sd15
+        from sd_embed.src.sd_embed.embedding_funcs import get_weighted_text_embeddings_sd15
         (
             prompt_embeds,
             prompt_neg_embeds
@@ -30,7 +26,7 @@ def prompt_weighted_encode(pipe, prompt, neg_prompt, model_type,**kwargs):
         print(prompt)
         print(neg_prompt)
         print("--- After get_weighted_text_embeddings_sdxl ---")
-        from embedding_funcs import get_weighted_text_embeddings_sdxl
+        from sd_embed.src.sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
         (
             prompt_embeds,
             prompt_neg_embeds,
@@ -50,7 +46,7 @@ def prompt_weighted_encode(pipe, prompt, neg_prompt, model_type,**kwargs):
         ) 
 
     elif model_type == 'sd3':
-        from embedding_funcs import get_weighted_text_embeddings_sd3
+        from sd_embed.src.sd_embed.embedding_funcs import get_weighted_text_embeddings_sd3
         (
             prompt_embeds,
             prompt_neg_embeds,
@@ -70,8 +66,7 @@ def prompt_weighted_encode(pipe, prompt, neg_prompt, model_type,**kwargs):
         )
 
     elif model_type == 'storyadapterxl':
-        from embedding_funcs import get_weighted_text_embeddings_storyadapterxl
-        # 在StoryAdapterXL的generate方法中替换encode_prompt调用
+        from sd_embed.src.sd_embed.embedding_funcs import get_weighted_text_embeddings_storyadapterxl
         (
             prompt_embeds,
             prompt_neg_embeds,
@@ -136,7 +131,7 @@ def example_for_sd_15():
     import gc
     import torch
     from diffusers import StableDiffusionPipeline
-    from sd_embed.embedding_funcs import get_weighted_text_embeddings_sd15
+    from sd_embed.src.sd_embed.embedding_funcs import get_weighted_text_embeddings_sd15
 
     model_path = "stablediffusionapi/deliberate-v2"
     pipe = StableDiffusionPipeline.from_pretrained(
@@ -199,7 +194,7 @@ def example_for_sdxl():
     import gc
     import torch
     from diffusers import StableDiffusionXLPipeline
-    from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
+    from sd_embed.src.sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
 
     model_path = "Lykon/dreamshaper-xl-1-0"
     pipe = StableDiffusionXLPipeline.from_pretrained(

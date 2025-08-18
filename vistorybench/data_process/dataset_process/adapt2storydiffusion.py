@@ -9,8 +9,8 @@ class StoryConverter:
         self.output_root = output_root
 
     def replace_character_names(self, text, characters):
-        """将文本中的角色名称替换为[角色名]格式"""
-        # 按名称长度降序排序，避免短名称误替换
+        """Replace character names in text with [character_name] format"""
+        # Sort by name length in descending order to avoid short name mis-replacement
         sorted_chars = sorted(characters, key=lambda x: -len(x))
         for char in sorted_chars:
             pattern = re.compile(r'\b{}\b'.format(re.escape(char)))
@@ -28,11 +28,11 @@ class StoryConverter:
 
 
     def story_prompt_merge(self, shots, trigger):
-        # 构建prompt_array
+        # Build prompt_array
         prompt_array = []
         for shot in shots:
             chars_in_shot = shot['character_name']
-            # 处理角色部分
+            # Process character part
             if not chars_in_shot:
                 roles = "[NC]"
             else:
@@ -43,9 +43,9 @@ class StoryConverter:
                 name_is_name_list = [f"{name} is [{name}]" for name in chars_in_shot]
                 name_is_name_and_name = " and ".join(name_is_name_list) if len(name_is_name_list) > 1 else name_is_name_list[0]
                 roles = name_and_name_img + ', ' + name_is_name_and_name
-                # role_part = roles[0] # 记得改
+                # role_part = roles[0] # Remember to change
 
-            # 组合场景、剧本和故事描述
+            # Combine scene, script and story description
             camera = shot.get('camera', '')
             scene = shot.get('scene', '')
             script = shot.get('script', '')
@@ -54,7 +54,7 @@ class StoryConverter:
             # script = self.replace_character_names(script, chars_in_shot)
             # plot = self.replace_character_names(plot, chars_in_shot)
 
-            # 输入文本（prompt）不能超出模型的最大序列长度限制（77个token）
+            # Input text (prompt) cannot exceed the model's maximum sequence length limit (77 tokens)
             prompt_merge_mode = 'plot_first'
             if prompt_merge_mode == 'full':
                 front_part = f"{roles}; {scene}; {camera}; {script}; {plot}.".strip(', ').strip()
@@ -73,36 +73,36 @@ class StoryConverter:
         return prompt_array
 
 
+
     def ref_img_extract(self, shots, characters):
         image_paths = []
         general_prompt_lines = []
 
-        for char_key, char_info in characters.items(): # 角色库
-            char_path = characters[f'{char_key}']['images'][0] #取第一张角色图
+        for char_key, char_info in characters.items(): # Character library
+            char_path = characters[f'{char_key}']['images'][0] # Take first character image
             if os.path.exists(char_path):
                 image_paths.append(char_path)
             else:
-                print(f"警告: {char_key} 参考图缺失: {char_path}")
+                print(f"Warning: {char_key} reference image missing: {char_path}")
 
             line = f"[{char_key}] {characters[char_key]['prompt']}"
             general_prompt_lines.append(line)
 
         # for shot in shots:
         #     for char_name in shot['character_key']:
-        #         # 验证角色是否存在
+        #         # Verify character exists
         #         if char_name not in characters:
-        #             print(f"警告: 角色 {char_name} 未在角色库中定义")
+        #             print(f"Warning: Character {char_name} not defined in character library")
         #             continue
                 
-        #         # 生成角色图片路径
+        #         # Generated character image path
         #         # sanitized_name = char_name.replace(" ", "_")
         #         char_path = characters[f'{char_name}']['images'][0] #取第一张角色图
         #         if os.path.exists(char_path):
         #             image_paths.append(char_path)
         #         else:
-        #             print(f"警告: {char_name} 参考图缺失: {char_path}")
+        #             print(f"Warning: {char_name} reference image missing: {char_path}")
             
-        #     # 改进后的general_prompt生成（添加img触发词）
         #         line = f"[{char_name}] {characters[char_name]['prompt']}"
         #         general_prompt_lines.append(line)
         
@@ -114,41 +114,35 @@ class StoryConverter:
         for story_name in story_name_list:
             story_data = stories_data[story_name]
             shots = story_data["shots"]
-            characters = story_data["characters"] # 总的角色表
+            characters = story_data["characters"] 
 
-            # 判断模型类型 + 触发词判断逻辑
             has_ref_images = any(len(char['images']) > 0 for char in characters.values())
-            # has_ref_images = False # 记得改，has_ref_images为True时，使用参考图，为False时，只使用文本
+            # has_ref_images = False 
             model_type = "Using Ref Images" if has_ref_images else "Only Using Textual Description"
 
-            # 根据参考图存在性添加img标记
             if model_type == "Using Ref Images":
                 trigger = " img"
             elif model_type == "Only Using Textual Description":
                 trigger = ""
 
-            # 收集所有图片路径
             image_paths, general_prompt_lines = self.ref_img_extract(shots, characters)
 
             general_prompt = "\n".join(general_prompt_lines)
 
-            # 固定negative_prompt
             negative_prompt = "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs"
 
             prompt_array = self.story_prompt_merge(shots, trigger)
             
             prompt_array_str = self.array2string(prompt_array)
 
-            # 其他参数
             seed_ = 42
             sa32_ = 0.5
             sa64_ = 0.5
-            id_length_ = 1 # 记得改
+            id_length_ = 1 
             style = "(No style)"
             G_height = 768
             G_width = 1344
 
-            # 构建example条目
             example = [
                 seed_,
                 sa32_,
@@ -167,7 +161,6 @@ class StoryConverter:
             ]
             examples.append(example)
         
-        # 保存生成的examples
         self.save_examples(examples)
 
 
@@ -180,26 +173,23 @@ class StoryConverter:
             f.write("examples = [\n")
             for ex in examples:
                 f.write("    [\n")
-                # 数值型参数
+
                 f.write(f"        {ex[0]},  # seed_\n")
                 f.write(f"        {ex[1]},  # sa32_\n")
                 f.write(f"        {ex[2]},  # sa64_\n")
-                f.write(f"        {ex[3]},  # id_length_ 登场角色id在分镜中至少出现的次数（不要为0，至少为1）\n")
+                f.write(f"        {ex[3]},  # id_length_\n")
                 
-                # 文本型参数
                 f.write(f"        {repr(ex[4])},  # dataset_name\n")
                 f.write(f"        {repr(ex[5])},  # story_name\n")
 
                 f.write(f"        {repr(ex[6])},  # general_prompt\n")
                 f.write(f"        {repr(ex[7])},  # negative_prompt\n")
-                
-                # 处理多行prompt（直接写入处理后的字符串）
+
                 f.write(f"        {repr(ex[8])},  # prompt_array\n")
                 
-                # 其他参数
                 f.write(f"        {repr(ex[9])},  # style\n")
                 f.write(f"        {repr(ex[10])},  # model_type\n")
-                f.write(f"        {repr(ex[11])},  # files\n")  # 直接写入路径列表
+                f.write(f"        {repr(ex[11])},  # files\n") 
                 f.write(f"        {ex[12]},  # G_height\n")
                 f.write(f"        {ex[13]},  # G_width\n")
                 f.write("    ],\n")
@@ -215,8 +205,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     language=args.language
 
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data"
-    dataset_name = 'WildStory'
+    data_path = args.data_path
+    dataset_name = 'ViStory'
 
     method = 'storydiffusion'
 

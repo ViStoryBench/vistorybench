@@ -11,8 +11,9 @@ from tqdm import tqdm
 from math import floor
 from scipy.stats import entropy
 import datetime
+import time
 
-# --- 数据集类 ---
+# --- Dataset class ---
 class ImageDataset(Dataset):
     def __init__(self, image_paths, transform=None):
         self.image_paths = image_paths
@@ -23,41 +24,35 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
-        try:
-            image = Image.open(img_path).convert('RGB')
-            if self.transform:
-                image = self.transform(image)
-            return image
-        except Exception as e:
-            print(f"Warning: Could not load image {img_path}. Skipping. Error: {e}")
-            # Return a dummy tensor or handle appropriately
-            # For simplicity, returning None and handling in collate_fn or main loop
-            return None
+        image = Image.open(img_path).convert('RGB')
+        if self.transform:
+            image = self.transform(image)
+        return image
 
-# --- Inception Score 计算函数 ---
+# --- Inception Score calculation function ---
 def calculate_inception_score(image_paths, batch_size=32, splits=1, device='cuda' if torch.cuda.is_available() else 'cpu'):
     """
-    计算给定图像路径列表的 Inception Score。
+    Calculate Inception Score for a given list of image paths.
 
     Args:
-        image_paths (list): 包含图像文件路径的列表。
-        batch_size (int): 处理图像的批量大小。
-        splits (int): 用于计算 IS 稳定性的分割次数。
-        device (str): 使用的设备 ('cuda' or 'cpu')。
+        image_paths (list): List containing image file paths.
+        batch_size (int): Batch size for processing images.
+        splits (int): Number of splits for calculating IS stability.
+        device (str): Device to use ('cuda' or 'cpu').
 
     Returns:
-        tuple: (平均 IS, IS 标准差)
-               如果图像数量不足或加载失败，则返回 (0.0, 0.0)。
+        tuple: (Average IS, IS standard deviation)
+               Returns (0.0, 0.0) if insufficient images or loading failure.
     """
     if not image_paths:
         print("Warning: No valid image paths provided for IS calculation.")
         return 0.0, 0.0
 
-    # 加载预训练的 Inception v3 模型
+    # Load pre-trained Inception v3 model
     inception_model = models.inception_v3(pretrained=True, transform_input=False).to(device)
     inception_model.eval()
 
-    # 定义图像预处理变换
+    # Define image preprocessing transforms
     preprocess = transforms.Compose([
         transforms.Resize(299),
         transforms.CenterCrop(299),
@@ -74,7 +69,6 @@ def calculate_inception_score(image_paths, batch_size=32, splits=1, device='cuda
         return 0.0, 0.0
     if len(dataset) < batch_size * splits:
          print(f"Warning: Number of images ({len(dataset)}) is potentially too small for stable IS calculation with {splits} splits and batch size {batch_size}. Results might be unreliable.")
-
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
@@ -100,13 +94,13 @@ def calculate_inception_score(image_paths, batch_size=32, splits=1, device='cuda
          return 0.0, 0.0
 
 
-    # 计算 Inception Score
+    # Calculate Inception Score
     scores = []
     for i in range(splits):
         part = preds[i * (num_images // splits): (i + 1) * (num_images // splits), :]
         if part.shape[0] == 0: continue # Skip empty splits
 
-        # 计算 p(y|x) 的 KL 散度
+        # Calculate KL divergence of p(y|x)
         kl_divs = []
         for j in range(part.shape[0]):
             pyx = part[j, :]
@@ -114,7 +108,7 @@ def calculate_inception_score(image_paths, batch_size=32, splits=1, device='cuda
             kl_div = entropy(pyx, py)
             kl_divs.append(kl_div)
 
-        # 计算分割的 IS
+        # Calculate split IS
         split_score = np.exp(np.mean(kl_divs))
         scores.append(split_score)
 
@@ -127,90 +121,90 @@ def calculate_inception_score(image_paths, batch_size=32, splits=1, device='cuda
 
     return float(mean_is), float(std_is)
 
-# --- 目录处理和主函数 ---
+# --- Directory processing and main functions ---
 def process_directory(root_dir, device): # Pass device
     """
-    遍历指定的目录结构，计算每个 method 下所有图像的聚合 IS。
-
-    目录结构假定为: root_dir/method/**/shot_*.png (递归查找)
-
+    Traverse the specified directory structure and calculate aggregated IS for all images under each method.
+    
+    Directory structure assumed to be: root_dir/method/**/shot_*.png (recursive search)
+    
     Args:
-        root_dir (str): 包含所有方法输出的根目录 (e.g., 'outputs')。
-        device (str): 使用的设备 ('cuda' or 'cpu')。
-
+        root_dir (str): Root directory containing all method outputs (e.g., 'outputs').
+        device (str): Device to use ('cuda' or 'cpu').
+    
     Returns:
-        list: 包含每个 method 结果的字典列表。
+        list: List of dictionaries containing results for each method.
     """
     results = []
     if not os.path.isdir(root_dir):
-        print(f"错误：根目录 '{root_dir}' 未找到。")
+        print(f"Error: Root directory '{root_dir}' not found.")
         return results
 
-    # 获取所有 method 目录
+    # Get all method directories
     try:
-        # 仅考虑根目录下的一级目录作为方法名
+        # Only consider first-level directories under root as method names
         method_names = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
         method_names=['storygen']
     except FileNotFoundError:
-        print(f"错误：无法访问根目录 '{root_dir}'。")
+        print(f"Error: Cannot access root directory '{root_dir}'.")
         return results
     except Exception as e:
-        print(f"列出方法目录时出错：{e}")
+        print(f"Error listing method directories: {e}")
         return results
 
     if not method_names:
-        print(f"警告：在 '{root_dir}' 中未找到方法目录。")
+        print(f"Warning: No method directories found in '{root_dir}'.")
         return results
 
-    print(f"找到方法: {method_names}")
+    print(f"Found methods: {method_names}")
 
-    # 收集每个方法的所有图像路径
+    # Collect all image paths for each method
     method_images = {}
-    print("开始收集图像文件路径...")
-    for method in tqdm(method_names, desc="扫描方法"):
+    print("Starting to collect image file paths...")
+    for method in tqdm(method_names, desc="Scanning methods"):
         method_path = os.path.join(root_dir, method)
         current_method_images = []
 
-        # 使用 os.walk 递归查找所有符合条件的图像文件
+        # Use os.walk to recursively find all image files that meet the criteria
         for dirpath, _, filenames in os.walk(method_path):
             for filename in filenames:
-                # 检查文件名是否以 'shot_' 开头并具有支持的扩展名
+                # Check if filename starts with 'shot_' and has supported extension
                 if filename.lower().startswith('shot_') and filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                     img_path = os.path.join(dirpath, filename)
                     current_method_images.append(img_path)
 
-        # 可选：对每个方法的图像排序，虽然 IS 计算本身不依赖顺序
+        # Optional: sort images for each method, though IS calculation itself doesn't depend on order
         current_method_images.sort()
-        method_images[method] = current_method_images # 存储收集到的图像
-        print(f"方法 '{method}' 找到 {len(current_method_images)} 张图像。")
+        method_images[method] = current_method_images # Store collected images
+        print(f"Method '{method}' found {len(current_method_images)} images.")
 
-    print("\n开始计算每个方法的 Inception Score...")
-    # 为每个方法计算 IS
+    print("\nStarting to calculate Inception Score for each method...")
+    # Calculate IS for each method
     for method, image_files in method_images.items():
         if not image_files:
-            print(f"警告：方法 '{method}' 没有找到有效的 shot 图像，跳过 IS 计算。")
+            print(f"Warning: Method '{method}' has no valid shot images, skipping IS calculation.")
             continue
 
-        print(f"\n计算方法 '{method}' 的 IS ({len(image_files)} 张图像)")
+        print(f"\nCalculating IS for method '{method}' ({len(image_files)} images)")
 
-        # --- 计算 Inception Score ---
-        # 传入 batch_size 和 device
-        # 注意：如果图像数量非常大，batch_size 可能需要调整
+        # --- Calculate Inception Score ---
+        # Pass batch_size and device
+        # Note: if image count is very large, batch_size may need adjustment
         is_mean, is_std = calculate_inception_score(image_files, batch_size=32, device=device)
-        print(f"  -> 方法 '{method}' IS 平均值: {is_mean:.4f}, IS 标准差: {is_std:.4f}")
+        print(f"  -> Method '{method}' IS mean: {is_mean:.4f}, IS std: {is_std:.4f}")
 
-        # --- 构建结果字典 ---
+        # --- Build result dictionary ---
         result_entry = {
             "method_name": method,
-            "total_images_processed": len(image_files), # 添加处理的图像总数
+            "total_images_processed": len(image_files), # Add total processed images
             "aggregate_scores": {
                 "generated_diversity": {
-                    "inception_score": is_mean, # 聚合分数使用 IS 均值
-                    "inception_score_std": is_std # 加入标准差
+                    "inception_score": is_mean, # Aggregate score uses IS mean
+                    "inception_score_std": is_std # Include standard deviation
                 }
-                # 在这里可以添加其他聚合指标
+                # Can add other aggregate metrics here
             }
-            # 不再需要原有的 "scores" 列表，因为是聚合计算
+            # No longer need original "scores" list, since it's aggregate calculation
         }
         results.append(result_entry)
 
@@ -221,73 +215,72 @@ def inception_score_for_folder(image_dir, data_path, method,
                                save_dir, filename_base, 
                                batch_size=32, splits=1, device=None):
     """
-    递归遍历 image_dir 下所有图片，计算 Inception Score，并保存结果到指定目录。
+    Recursively traverse all images under image_dir, calculate Inception Score, and save results to specified directory.
 
     Args:
-        image_dir (str): 需要递归遍历的图片文件夹。
-        data_path (str): 数据根目录，用于输出路径拼接。
-        method (str): 方法名，用于输出路径拼接。
-        batch_size (int): 批量大小。
-        splits (int): IS分割数。
-        device (str): 设备（可选）。
+        image_dir (str): Image folder that needs recursive traversal.
+        data_path (str): Data root directory, used for output path concatenation.
+        method (str): Method name, used for output path concatenation.
+        batch_size (int): Batch size.
+        splits (int): IS split count.
+        device (str): Device (optional).
     Returns:
-        dict: 结果字典。
-        str: 保存的json路径。
+        dict: Result dictionary.
+        str: Saved json path.
     """
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # 递归收集所有图片
+    # Recursively collect all images
     # image_files = []
     # for dirpath, _, filenames in os.walk(image_dir):
     #     for filename in filenames:
     #         if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
     #             image_files.append(os.path.join(dirpath, filename))
     # image_files.sort()
-    # print(f"共找到 {len(image_files)} 张图片用于 IS 计算。")
+    # print(f"Found {len(image_files)} images for IS calculation.")
 
 
-    print(f'image_dir:{image_dir}')
+    # print(f'image_dir:{image_dir}')
 
-    # 递归收集所有图片（安全排除 bench results 目录）
+    # Recursively collect all images (safely exclude bench results directory)
     image_files = []
     if isinstance(image_dir, str):
-        exclude_dir = "bench results"  # 要排除的目录名
+        exclude_dir = "bench results"  # Directory name to exclude
         for dirpath, dirs, filenames in os.walk(image_dir):
-            # 存在性检查 + 排除逻辑
-            try:
-                if exclude_dir in dirs and os.path.join(dirpath, exclude_dir):
-                    dirs.remove(exclude_dir)  # 阻止 os.walk 进入该目录
-            except Exception as e:
-                raise
-            
-            # 收集图片文件
+            # Existence check + exclusion logic
+            if exclude_dir in dirs and os.path.join(dirpath, exclude_dir):
+                dirs.remove(exclude_dir)  # Prevent os.walk from entering this directory
+
+            # Collect image files
             for filename in filenames:
                 if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                     image_files.append(os.path.join(dirpath, filename))
 
         image_files.sort()
-        print(f"共找到 {len(image_files)} 张图片用于 IS 计算（已排除 {exclude_dir} 目录）。")
+        print(f"Found {len(image_files)} images for IS calculation (excluded {exclude_dir} directory).")
         
     elif isinstance(image_dir, dict):
         for story_name, image_paths in image_dir.items():
             if story_name in CHOICE_DATASET:
-                image_files.extend(image_paths)  # 将每个场景的路径列表合并到总列表
+                image_files.extend(image_paths['shots'])  # Merge each scene's path list into total list
 
         image_files.sort()
-        # 验证结果
-        print(f"共合并 {len(image_files)} 张图片路径:")
-        for path in image_files[:3]:  # 打印前3条路径示意
+        # Verify results
+        print(f"Combined {len(image_files)} image paths (Print first 3 paths):")
+        for path in image_files[:3]:  # Print first 3 paths as examples
             print(f" - {path}")
 
-    print(f'all image_files:{image_files}')
+    # print(f'all image_files:{image_files}')
 
 
-
-
-
+    start_time = time.time()
     is_mean, is_std = calculate_inception_score(image_files, batch_size=batch_size, splits=splits, device=device)
-    # 生成时间戳
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Time-consuming of single story IS Score: {elapsed_time:.4f} seconds")
+    
+    # Generate timestamp
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     if not save_dir:
         save_dir = os.path.join(data_path, 'outputs', method, 'bench_results', 'inception_score', timestamp)
@@ -301,25 +294,25 @@ def inception_score_for_folder(image_dir, data_path, method,
                 "inception_score": is_mean,
                 "inception_score_std": is_std
             }
-        }
+        },
+        "elapsed_time(seconds)":elapsed_time
     }
     with open(save_path, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
-    print(f"IS 结果已保存至 {save_path}")
+    print(f"IS results saved to {save_path}")
     return result, save_path
 
 
 
 def get_inception_score_and_save(
-        method, stories_outputs, 
+        method, stories_outputs, data_path,
         CHOICE_DATASET, label,
         save_dir, filename_base):
-    # --- 配置 ---
-    # root_output_directory = "processed_outputs"  # 示例根目录
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data" # 使用实际的根目录
+    # --- Configuration ---
+    # root_output_directory = "processed_outputs"  # Example root directory
     method_path= f'{data_path}/outputs/{method}'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"使用设备: {device}")
+    print(f"Using device: {device}")
     inception_score_for_folder(
         stories_outputs, data_path, method, 
         CHOICE_DATASET, label,
@@ -329,13 +322,13 @@ def get_inception_score_and_save(
 
 
 if __name__ == "__main__":
-    # --- 配置 ---
-    # root_output_directory = "processed_outputs"  # 示例根目录
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data" # 使用实际的根目录
+    # --- Configuration ---
+    # root_output_directory = "processed_outputs"  # Example root directory
+    data_path = "ViStoryBench/data" # Use actual root directory
     method = 'storygen'
     method_path= f'{data_path}/outputs/{method}'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"使用设备: {device}")
+    print(f"Using device: {device}")
     inception_score_for_folder(
         method_path,
         data_path, 

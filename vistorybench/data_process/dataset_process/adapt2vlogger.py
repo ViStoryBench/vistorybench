@@ -11,7 +11,7 @@ class StoryConverter:
         self.dataset = dataset
 
     def save_json(self, path, data):
-        """保存JSON文件，保持key顺序"""
+        """Save JSON file, maintaining key order"""
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
@@ -26,25 +26,25 @@ class StoryConverter:
             os.makedirs(script_dir, exist_ok=True)
             os.makedirs(ref_img_dir, exist_ok=True)
 
-            # 加载多语言分镜数据
+            # Load multilingual shot data
             en_shots = sorted(self.dataset.load_shots(story_name, 'en'), key=lambda x: x['index'])
             zh_shots = sorted(self.dataset.load_shots(story_name, 'ch'), key=lambda x: x['index'])
             
-            # 1. 生成 video_prompts.txt（英文）
+            # 1. Generate video_prompts.txt (English)
             video_prompts = [{
                 "video fragment id": shot['index'],
                 "video fragment description": shot['script']
             } for shot in en_shots]
             # self.save_json(os.path.join(output_dir, "video_prompts.txt"), video_prompts)
 
-            # 2. 生成 zh_video_prompts.txt（中文）
+            # 2. Generate zh_video_prompts.txt (Chinese)
             zh_video_prompts = [{
-                "序号": shot['index'],
-                "描述": shot['script']
+                "sequence_number": shot['index'],
+                "description": shot['script']
             } for shot in zh_shots]
             # self.save_json(os.path.join(output_dir, "zh_video_prompts.txt"), zh_video_prompts)
 
-            # 3. 生成 protagonists_places.txt
+            # 3. Generate protagonists_places.txt
             characters = self.dataset.load_characters(story_name, 'en')
             protagonists = []
             char_id_map = OrderedDict()
@@ -53,14 +53,14 @@ class StoryConverter:
                 char_data = characters[char_key]
                 protagonists.append({
                     "id": current_id,
-                    "name": char_data['key'],  # 使用英文标识符作为name
+                    "name": char_data['key'],  # Use English identifier as name
                     "description": char_data['prompt']
                 })
                 char_id_map[char_key] = current_id
                 current_id += 1
             # self.save_json(os.path.join(output_dir, "protagonists_places.txt"), protagonists)
 
-            # 4. 生成 protagonists_place_reference.txt
+            # 4. Generate protagonists_place_reference.txt
             place_refs = []
             for shot in en_shots:
                 character_ids = []
@@ -73,57 +73,58 @@ class StoryConverter:
                 })
             # self.save_json(os.path.join(output_dir, "protagonists_place_reference.txt"), place_refs)
 
-            # 5. 生成 time_scripts.txt（使用默认时长3秒）
+            # 5. Generate time_scripts.txt (using default duration of 3 seconds)
             time_scripts = [{
                 "video fragment id": shot['index'],
-                "time": 3  # 默认3秒，可根据需要修改
+                "time": 3  # Default 3 seconds, can be modified as needed
             } for shot in en_shots]
             # self.save_json(os.path.join(output_dir, "time_scripts.txt"), time_scripts)
             
-            # 1~5. 将五个TXT文件保存到script目录
+            # 1~5. Save the five TXT files to script directory
             self.save_json(os.path.join(script_dir, "video_prompts.txt"), video_prompts)
             self.save_json(os.path.join(script_dir, "zh_video_prompts.txt"), zh_video_prompts)
             self.save_json(os.path.join(script_dir, "protagonists_places.txt"), protagonists)
             self.save_json(os.path.join(script_dir, "protagonists_place_reference.txt"), place_refs)
             self.save_json(os.path.join(script_dir, "time_scripts.txt"), time_scripts)
 
-            # 6. 处理参考图片
+            # 6. Process reference images
             characters = self.dataset.load_characters(story_name, 'en')
             for char_key in characters:
                 char_data = characters[char_key]
                 if not char_data['images']:
-                    print(f"角色 {char_data['key']} 没有参考图片，跳过保存")
+                    print(f"Character {char_data['key']} has no reference images, skipping save")
                     continue
                 
-                # 获取第一张图片
+                # Get the first image
                 src_img = char_data['images'][0]
                 
-                # 生成标准化文件名
-                # char_name = char_data['key'].replace(' ', '_')  # 替换空格
+                # Generate standardized filename
+                # char_name = char_data['key'].replace(' ', '_')  # Replace spaces
                 char_name = char_data['key']
-                file_ext = os.path.splitext(src_img)[1]  # 保留原始扩展名
+                file_ext = os.path.splitext(src_img)[1]  # Keep original extension
                 dst_img = os.path.join(ref_img_dir, f"{char_name}{file_ext}")
                 
                 try:
                     shutil.copy(src_img, dst_img)
-                    print(f"保存参考图: {os.path.basename(src_img)} -> {os.path.basename(dst_img)}")
+                    print(f"Saved reference image: {os.path.basename(src_img)} -> {os.path.basename(dst_img)}")
                 except Exception as e:
-                    print(f"复制图片失败: {str(e)}")
+                    print(f"Failed to copy image: {str(e)}")
 
 
 
 # if __name__ == "__main__":
-#     # 初始化数据集
-#     data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data"
-#     dataset_name = 'WildStory'
+#     # Initialize dataset
+#     '''Please modify it by yourself.'''
+#     data_path = args.data_path
+#     dataset_name = 'ViStory'
 #     dataset_path = f"{data_path}/dataset/{dataset_name}"
 #     dataset = StoryDataset(dataset_path)
     
-#     # 创建转换器
+#     # Create converter
 #     processed_root = f"{data_path}/dataset_processed/vlogger/{dataset_name}_en"
 #     converter = StoryConverter(dataset_path, processed_root, dataset)
     
-#     # 获取所有故事并转换
+#     # Get all stories and convert
 #     story_names = dataset.get_story_name_list()
 #     stories_data = dataset.load_stories(story_names, 'en')
 #     converter.convert(story_names, stories_data)
@@ -140,8 +141,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     language=args.language
 
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data"
-    dataset_name = 'WildStory'
+    '''Please modify it by yourself.'''
+    data_path = args.data_path
+    dataset_name = 'ViStory'
 
     method = 'vlogger'
 
@@ -156,8 +158,8 @@ if __name__ == "__main__":
 
 
     story_name_list = dataset.get_story_name_list()
-    print(f'\n故事名列表：{story_name_list}')  # 获取所有故事列表
-    stories_data = dataset.load_stories(story_name_list,language)  # 加载指定故事数据
+    print(f'\nStory name list: {story_name_list}')  # Get all story list
+    stories_data = dataset.load_stories(story_name_list,language)  # Load specified story data
     converter.convert(story_name_list, stories_data)
 
 

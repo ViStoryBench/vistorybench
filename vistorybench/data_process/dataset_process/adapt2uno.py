@@ -40,8 +40,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     language=args.language
 
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data"
-    dataset_name = 'WildStory'
+    '''Please modify it by yourself.'''
+    data_path = args.data_path
+    dataset_name = 'ViStory'
 
     method = 'uno'
 
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     converter = StoryConverter(input_dir, output_dir)
 
     story_name_list = dataset.get_story_name_list()
-    print(f'\n故事名列表：{story_name_list}')  # 获取所有故事列表
-    stories_data = dataset.load_stories(story_name_list,language)  # 加载指定故事数据
+    print(f'\nStory name list: {story_name_list}')  # Get all story list
+    stories_data = dataset.load_stories(story_name_list,language)  # Load specified story data
     result = converter.convert(story_name_list, stories_data)
     print("Conversion completed and saved to:", os.path.join(output_dir, "story_set.json"))

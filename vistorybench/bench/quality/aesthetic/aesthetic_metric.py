@@ -19,17 +19,18 @@ import cv2
 
 
 class Aesthetic_Metric:
-    def __init__(self, rank = 0, device = "cuda") -> None:
+    def __init__(self, rank = 0, device = "cuda", pretrain_path = '/data/pretrain') -> None:
         self.rank = rank
         self.device = torch.device(device)
 
-        VGO_HUB_ROOT = "/data/AIGC_Research/Story_Telling/StoryVisBMK/code/bench/quality/aesthetic"
+        VGO_HUB_ROOT = "bench/quality/aesthetic"
 
         aesthetic_predictor_v2_5, _ = torch.hub.load(
             os.path.join(VGO_HUB_ROOT, "aesthetic-predictor-v2-5"),
             "aesthetic_predictor_v2_5",
             # predictor_name_or_path=os.path.join(VGO_HUB_ROOT, "aesthetic-predictor-v2-5", "aesthetic_predictor_v2_5.pth"),
-            predictor_name_or_path='/data/pretrain/aesthetic_predictor/aesthetic_predictor_v2_5.pth',
+            predictor_name_or_path = f'{pretrain_path}/aesthetic_predictor/aesthetic_predictor_v2_5.pth',
+            pretrain_path = pretrain_path,
             source="local",
             
             torch_dtype=torch.float16,
@@ -133,14 +134,13 @@ class Aesthetic_Metric:
             raise TypeError("Input must be a torch.Tensor or PIL.Image")
 
 
-def get_aesthetic_score(aesthetic_metric, image_path):
-    # 修改后的示例：从文件路径读取真实图片
-    Img = Image.open(image_path)
-    if Img.mode != 'RGB':
-        Img = Img.convert('RGB')
-    scores = aesthetic_metric(Img)
-    print(f"Aesthetic Score: {scores:.2f}")
-    return scores
+# def get_aesthetic_score(aesthetic_metric, image_path):
+#     Img = Image.open(image_path)
+#     if Img.mode != 'RGB':
+#         Img = Img.convert('RGB')
+#     scores = aesthetic_metric(Img)
+#     print(f"Aesthetic Score: {scores:.2f}")
+#     return scores
 
 
 if __name__ == "__main__":
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     # scores = aesthetic_metric(image)
     # print(scores)
 
-    image_path = '/data/AIGC_Research/Story_Telling/StoryVisBMK/data/outputs/uno/WildStory_en/01/20250430-021913/0_0.png'
-    scores = get_aesthetic_score(image_path)
+    image_path = '../data/outputs/uno/WildStory_en/01/20250430-021913/0_0.png'
+    # scores = get_aesthetic_score(image_path)
 
     

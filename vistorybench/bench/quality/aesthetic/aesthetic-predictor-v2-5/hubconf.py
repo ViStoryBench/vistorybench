@@ -6,15 +6,19 @@ from transformers import SiglipImageProcessor
 
 def aesthetic_predictor_v2_5(
     predictor_name_or_path: str | PathLike | None = None,
-    encoder_model_name: str = "/data/pretrain/google/siglip-so400m-patch14-384",
+    encoder_model_name: str = f"google/siglip-so400m-patch14-384",
+    pretrain_path: str = '/data/pretrain',
     *args,
     **kwargs,
 ) -> tuple[AestheticPredictorV2p5Model, SiglipImageProcessor]:
+
+    encoder_model_name_path = f'{pretrain_path}/{encoder_model_name}'
+
     model = AestheticPredictorV2p5Model.from_pretrained(
-        encoder_model_name, *args, **kwargs, local_files_only=True)
+        encoder_model_name_path, *args, **kwargs, local_files_only=True)
 
     processor = SiglipImageProcessor.from_pretrained(
-        encoder_model_name, *args, **kwargs, local_files_only=True)
+        encoder_model_name_path, *args, **kwargs, local_files_only=True)
 
     state_dict = load_apv2p5_state_dict(predictor_name_or_path)
     model.layers.load_state_dict(state_dict)

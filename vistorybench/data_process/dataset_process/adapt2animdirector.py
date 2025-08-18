@@ -6,7 +6,7 @@ class StoryConverter:
     def __init__(self, input_root, output_root_base, method, dataset_name, language):
         self.input_root = input_root
         self.output_root_base = output_root_base # Base for dataset_processed
-        self.output_results_base = "/data/AIGC_Research/Story_Telling/StoryVisBMK/outputs" # Base for outputs like images
+        self.output_results_base = "/Story_Telling/vistorybench/outputs" # Base for outputs like images
         self.method = method
         self.dataset_name = dataset_name
         self.language = language
@@ -25,8 +25,8 @@ class StoryConverter:
             for name in char_names:
                 if name in characters:
                     char_prompt = characters[name]['prompt']
-                    # char_image = characters[name]['images'] # 每个角色取全部
-                    char_image = characters[name]['images'][0] # 每个角色取一张
+                    # char_image = characters[name]['images'] # Take all images for each character
+                    char_image = characters[name]['images'][0] # Take one image for each character
                     char_prompts.append(f'{name} is {char_prompt}')
                     char_images.append(char_image)
             shot_prompt = (
@@ -34,7 +34,7 @@ class StoryConverter:
                 f"{shot['plot']};"
                 f"{shot['script']};"
                 f"{shot['scene']};"
-                f"{';'.join(char_prompts)}"  # 用;分隔多个角色描述
+                f"{';'.join(char_prompts)}"  # Use ; to separate multiple character descriptions
             )
 
             shots.append({
@@ -60,45 +60,45 @@ class StoryConverter:
 
         for story_id in story_name_list:
             if story_id not in stories_data:
-                print(f"警告：在 stories_data 中找不到故事 {story_id}，跳过。")
+                print(f"Warning: Story {story_id} not found in stories_data, skipping.")
                 continue
 
             story_data = stories_data[story_id]
             input_shots = story_data.get("shots", [])
-            characters_info = story_data.get("characters", {}) # 获取角色信息
+            characters_info = story_data.get("characters", {}) # Get character information
 
             if not input_shots:
-                print(f"警告：故事 {story_id} 没有找到 shots 数据，跳过。")
+                print(f"Warning: Story {story_id} has no shots data, skipping.")
                 continue
 
-            print(f"正在处理故事 (聚合到 stories.json): {story_id}")
+            print(f"Processing story (aggregating to stories.json): {story_id}")
 
-            # === 初始化用于 segment2prompt 的数据 ===
+            # === Initialize data for segment2prompt ===
             segment2prompt_data = {
                 "segment": "",
                 "answer": "",
                 "final_answer": ""
             }
             char_details = []
-            setting_details = set() # 使用集合来存储唯一的场景作为设置
+            setting_details = set() # Use set to store unique scenes as settings
             scene_segments_for_segment_field = []
             scene_segments_for_answer_field = []
 
-            # --- 提取角色信息 ---
+            # --- Extract character information ---
             for key, char_info in characters_info.items():
                 name = char_info.get('name', key)
                 prompt = char_info.get('prompt', 'No description available.')
                 char_details.append(f"{name}: {prompt}")
 
-            # === 处理每个 shot 来构建 scene segments ===
+            # === Process each shot to build scene segments ===
             scene2image_output = {}
             segment_num = len(input_shots)
             scene2image_output["segment_num"] = segment_num
 
             for i, shot in enumerate(input_shots):
-                segment_key = f"Scene 1 Segment {i + 1}" # 使用 1-based index
+                segment_key = f"Scene 1 Segment {i + 1}" # Use 1-based index
 
-                # --- 构建 scene2image 部分 ---
+                # --- Build scene2image section ---
                 scene_description_for_s2i = f"{shot.get('scene', '')}"
                 current_shot_char_prompts = []
                 for key in shot.get('character_key', []):
@@ -117,30 +117,30 @@ class StoryConverter:
                     "prompt": main_prompt_for_s2i.strip(';')
                 }
 
-                # --- 构建 segment2prompt 的 scene segments ---
+                # --- Build scene segments for segment2prompt ---
                 shot_scene = shot.get('scene', 'Unknown Location')
-                setting_details.add(shot_scene) # 添加到唯一设置列表
+                setting_details.add(shot_scene) # Add to unique settings list
                 char_names_in_shot = [characters_info.get(key, {}).get('name', key)
                                       for key in shot.get('character_key', [])]
                 char_list_str = f"[{', '.join(char_names_in_shot)}]" if char_names_in_shot else []
-                # 结合 plot 和 script 作为描述
+                # Combine plot and script as description
                 shot_description = f"{shot.get('plot', '')} {shot.get('script', '')}".strip()
                 camera_info = shot.get('camera', '')
                 camera_str = f"({camera_info}.)" if camera_info else ""
 
-                # 格式化 segment 字段的场景行
+                # Format scene line for segment field
                 scene_line_segment = f"{segment_key}: {char_list_str}[{shot_scene}] {shot_description} {camera_str}"
                 scene_segments_for_segment_field.append(scene_line_segment.strip())
 
-                # 格式化 answer 字段的场景行 (可能需要根据实际情况微调角色/服装等细节)
-                # 这里我们暂时使用与 segment 相似的格式，您可以后续根据需要调整此逻辑
-                # 例如，添加 "(in pink)" 或 "(in white)" 等细节需要更复杂的逻辑或元数据
+                # Format scene line for answer field (may need fine-tuning for character/costume details based on actual situation)
+                # Here we temporarily use a format similar to segment, you can adjust this logic later as needed
+                # For example, adding details like "(in pink)" or "(in white)" requires more complex logic or metadata
                 scene_line_answer = f"{segment_key}: {char_list_str}[{shot_scene}] {shot_description} {camera_str}"
                 scene_segments_for_answer_field.append(scene_line_answer.strip())
 
-            # --- 组装 segment2prompt ---
+            # --- Assemble segment2prompt ---
             characters_section = "\n".join(char_details)
-            # 目前仅列出场景名称作为设置
+            # Currently only list scene names as settings
             settings_section = "\n".join(list(setting_details))
             scenes_section_segment = "\n".join(scene_segments_for_segment_field)
             scenes_section_answer = "\n".join(scene_segments_for_answer_field)
@@ -151,7 +151,7 @@ class StoryConverter:
                 f"Scenes:\n{scenes_section_segment}"
             )
 
-            # 注意：answer 字段通常是期望的生成结果，这里暂时用提取的信息构建
+            # Note: answer field is usually the expected generation result, here temporarily build with extracted information
             segment2prompt_data["answer"] = f"'''{scenes_section_answer}'''"
 
             segment2prompt_data["final_answer"] = (
@@ -160,41 +160,45 @@ class StoryConverter:
                  f"Scenes:\n'''{scenes_section_answer}'''"
             )
 
-            # 构建当前故事的输出结构,包含 scene2image 和 segment2prompt
+            # Build output structure for current story, including scene2image and segment2prompt
             story_output_data = {
-                "segment2prompt": segment2prompt_data, # 添加 segment2prompt
+                "segment2prompt": segment2prompt_data, # Add segment2prompt
                 "scene2image": scene2image_output
             }
-            # 将当前故事的数据添加到总的字典中，以 story_id 为键
+            # Add current story data to the total dictionary with story_id as key
             all_stories_output_data[story_id] = story_output_data
 
-        # 所有故事处理完毕后，保存聚合后的数据到 stories.json
+        # After all stories are processed, save aggregated data to stories.json
         output_json_path = os.path.join(output_dir, "stories.json")
         try:
             with open(output_json_path, 'w', encoding='utf-8') as f:
-                # 直接写入聚合后的 all_stories_output_data
+                # Directly write aggregated all_stories_output_data
                 json.dump(all_stories_output_data, f, indent=4, ensure_ascii=False)
-            print(f"所有故事已聚合保存至: {output_json_path}")
-            # 返回包含单个文件路径的字典
+            print(f"All stories aggregated and saved to: {output_json_path}")
+            # Return dictionary containing single file path
             return {self.data_set_name: output_json_path}
         except Exception as e:
-            print(f"错误：无法保存聚合后的 stories.json 到 {output_json_path}: {e}")
-            return {} # 返回空字典表示失败
+            print(f"Error: Unable to save aggregated stories.json to {output_json_path}: {e}")
+            return {} # Return empty dictionary to indicate failure
 
-        print("所有故事 (animdirector format) 处理完毕。")
+        print("All stories (animdirector format) processing completed.")
         return all_story_outputs
 
 
 if __name__ == "__main__":
 
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data"
-    dataset_name = 'WildStory'
     import argparse
     parser = argparse.ArgumentParser(description='Story Dataset Processing Tool')
     parser.add_argument('--language', type=str, choices=['en', 'ch'],
                         default='en', help='Language option: en (English) or ch (Chinese)')
     args = parser.parse_args()
+
+    '''Please modify it by yourself.'''
+    data_path = args.data_path
+    dataset_name = 'ViStory'
+
     language=args.language
+    
     for language in ['en', 'ch']:
         args.language = language
 
@@ -215,16 +219,16 @@ if __name__ == "__main__":
         )
 
         story_name_list = dataset.get_story_name_list()
-        print(f'故事名列表：{story_name_list}')
+        print(f'Story name list: {story_name_list}')
         stories_data = dataset.load_stories(story_name_list, language)
-        # print(f'加载的故事数据 (部分): {json.dumps(dict(list(stories_data.items())[0:1]), indent=2, ensure_ascii=False)}') # Debug: print first story data
+        # print(f'Loaded story data (partial): {json.dumps(dict(list(stories_data.items())[0:1]), indent=2, ensure_ascii=False)}') # Debug: print first story data
 
         output_paths = converter.convert(story_name_list, stories_data)
-        # 现在 output_paths 是一个字典，例如 {'WildStory_en': '.../stories.json'}
-        print(f"转换完成 ({language}, method={method})，输出文件路径:")
+        # Now output_paths is a dictionary, e.g. {'vistorybench_en': '.../stories.json'}
+        print(f"Conversion completed ({language}, method={method}), output file paths:")
         if output_paths:
-            # output_paths 字典只有一个键值对
+            # output_paths dictionary has only one key-value pair
             for dataset_lang, path in output_paths.items():
                 print(f"  {dataset_lang}: {path}")
         else:
-            print("  没有生成任何输出文件。")
+            print("  No output files generated.")

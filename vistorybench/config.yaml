@@ -1,0 +1,10 @@
+pretrain_path:
+dataset_path:
+processed_dataset_path:
+outputs_path:
+avg_score_path:
+
+# config for prompt alignment score
+model_id: '' # your model
+api_key: '' #'your_api_key'
+base_url: '' #'your_base_url'

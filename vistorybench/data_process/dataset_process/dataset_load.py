@@ -1,17 +1,18 @@
 
 import os
 import json
+import argparse
+
+import yaml
+from pathlib import Path
 
 class StoryDataset:
     def __init__(self, root_dir):
         self.root_dir = root_dir
 
     def get_story_name_list(self):
-        """获取所有故事名称列表（按数字排序）"""
-        if not os.path.isdir(self.root_dir):
-            raise FileNotFoundError(f"根目录 {self.root_dir} 不存在")
-        
-        # 按目录名数字排序 (e.g. 01, 02,...)
+        """Get list of all story names from the dataset directory"""        
+        # Sort by number (e.g. 01, 02,...)
         entries = os.listdir(self.root_dir)
         return sorted(
             [entry for entry in entries if os.path.isdir(os.path.join(self.root_dir, entry))],
@@ -20,29 +21,24 @@ class StoryDataset:
 
     def _load_story_json(self, story_name):
         story_path = os.path.join(self.root_dir, story_name)
-        if not os.path.exists(story_path):
-            raise FileNotFoundError(f"故事目录 {story_path} 不存在")
-        
         story_json = os.path.join(story_path, "story.json")
-        if not os.path.isfile(story_json):
-            raise FileNotFoundError(f"story.json 不存在于 {story_path}")
-        
-        try:
-            with open(story_json, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            print(f"错误: {story_json} 不是有效的JSON文件")
-            return {}
-        except Exception as e:
-            print(f"读取文件失败: {str(e)}")
-            return {}
+        with open(story_json, "r", encoding="utf-8-sig") as f:
+            return json.load(f)
 
     def load_shots(self, story_name, language="en"):
-        """读取分镜数据（支持多语言）"""
+        """Load and process shots data for a single story.
+        
+        Args:
+            story_name (str): Identifier for the target story
+            language (str): Target language code (default: 'en')
+            
+        Returns:
+            list: Processed shot data with standardized names
+        """
         story_data = self._load_story_json(story_name)
         shots = []
         
-        # 字段映射关系：原始字段 -> 新字段名
+        # Field mapping: original name -> standardized name
         field_mapping = {
             "Setting Description": "scene",
             "Plot Correspondence": "plot",
@@ -52,72 +48,95 @@ class StoryDataset:
         }
         
         for shot in story_data.get("Shots", []):
-            # 校验原始字段是否存在
+            # Validate required name (original name) exist in source data
             original_fields = field_mapping.keys()
             if not all(field in shot for field in original_fields):
                 missing = [f for f in original_fields if f not in shot]
-                print(f"警告: 分镜 {shot.get('index', '未知')} 缺失字段 {missing}")
+                print(f"Warning: Shot {shot.get('index', 'unknown')} missing fields {missing}")
                 continue
             
-            # 构建新字段结构
+            # Build processed shot structure via standardized name
             processed_shot = {"index": shot["index"]}
             for orig_field, new_field in field_mapping.items():
                 if language in shot[orig_field]:
                     processed_shot[new_field] = shot[orig_field][language]
                     processed_shot["character_key"] = shot["Characters Appearing"]['en']
                 else:
-                    processed_shot[new_field] = f"({language} 数据缺失) " + str(shot[orig_field])
+                    processed_shot[new_field] = f"({language} data missing) " + str(shot[orig_field])
             
             shots.append(processed_shot)
         
         return shots
 
+
     def load_characters(self, story_name, language="en"):
-        """读取角色数据（支持多语言和图片）"""
+        """Load and process characters data for a single story.
+        
+        Args:
+            story_name (str): Identifier of the target story
+            language (str): Language code for localization (default: 'en')
+            
+        Returns:
+            dict: Processed character data with structure:
+                {
+                    char_key: {
+                        "name": localized_name,
+                        "key": english_name,
+                        "prompt": character_description,
+                        "tag": character_type,
+                        "num_of_appearances": int,
+                        "images": [path1, path2,...]
+                    }
+                }
+        """
         story_data = self._load_story_json(story_name)
         characters = {}
         story_path = os.path.join(self.root_dir, story_name)
         
+        # Directory containing character reference images
         image_ref_dir = os.path.join(story_path, "image")
         
         for char_key, char_data in story_data.get("Characters", {}).items():
-            # 提取多语言描述（兼容 prompt_zh/prompt_cn 等变体）
+            # Handle multilingual fields (supports variants like prompt_en/prompt_ch)
             name_key = f"name_{language}"
             prompt_key = f"prompt_{language}"
             
-            # 提取所有元数据
+            # Extract all metadata fields
             char_info = {
-                "name": char_data.get(name_key, ""),  # 优先显示对应语言的名字
-                "key": char_data.get("name_en", ""),  # 用于中文故事的角色索引
-                "prompt": char_data.get(prompt_key, ""),
-                "tag": char_data.get("tag", ""),
-                "num_of_appearances": char_data.get("num_of_appearances", -1),
-                "images": []
+                "name": char_data.get(name_key, ""),  # Prioritize displaying char names in the chosen language (ch/en)
+                "key": char_data.get("name_en", ""),  # English name for indexing Chinese name
+                "prompt": char_data.get(prompt_key, ""),  # Character description prompt
+                "tag": char_data.get("tag", ""),  # non_human/realistic_human/unrealistic_human
+                "num_of_appearances": char_data.get("num_of_appearances", -1),  # Default -1 if missing
+                "images": []  # Will store valid image paths
             }
             
-            # 收集角色图片
+            # Scan for character images
             char_dir = os.path.join(image_ref_dir, char_key)
             if os.path.isdir(char_dir):
                 for root, _, files in os.walk(char_dir):
-                    for img_file in sorted(files):
+                    for img_file in sorted(files):  # Process in sorted order
                         if img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
                             img_path = os.path.join(root, img_file)
-                            if os.path.isfile(img_path):  # 增加文件存在性校验
+                            # Verify file exists before adding (defensive programming)
+                            if os.path.isfile(img_path):
                                 char_info["images"].append(img_path)
             
             characters[char_key] = char_info
         
         return characters
 
+
+
+
     def load_type(self, story_name, language="en"):
-        """读取故事类型（支持多语言）"""
+        """Load story type"""
         story_data = self._load_story_json(story_name)
         story_type = story_data.get("Story_type", {})
-        
-        # 获取对应语言的类型描述
-        return story_type.get(language, f"({language} 类型未定义)")
+        return story_type.get(language, f"({language} type not defined)")
     
     def load_story(self, story_name, language="en"):
+        """Load complete story data"""
         return {
             "type": self.load_type(story_name, language),
             "shots": self.load_shots(story_name, language),
@@ -125,155 +144,211 @@ class StoryDataset:
         }
 
     def load_stories(self, story_name_list, language="en"):
+        """Load multiple stories"""
         return {
             story_name: self.load_story(story_name, language)
             for story_name in story_name_list
         }
 
 
-    def story_prompt_merge(self, story_data, mode = ''):
-
-        characters = story_data["characters"]
-
-        shots_all = []
-        shots_prompt = []
-        shots_image = []
-        chars_prompt = []
-
-        for shot in story_data["shots"]:
+    def story_prompt_merge(self, story_data, mode=''):
+            """Merge and process story shots with character prompts and images.
             
-            char_keys = []
-            char_names = []
-            char_prompts = []
-            char_images = []
-            # 1. 获取当前分镜的角色列表
-            for char_key,char_name in zip(shot['character_key'],shot['character_name']):
-                # 验证角色是否存在
-                if char_key not in characters:
-                    print(f"警告: 角色 {char_key} 未在角色库中定义")
-                    continue
-                char_key = char_key.strip()
-                char_keys.append(char_key)
-                char_names.append(char_name)
-
-            # 2. 提取这些角色的描述词及图像路径
-                char_prompt = characters[char_key]['prompt']
-                # char_image = characters[char_key]['images']  # 取所有角色图
-                char_image = characters[char_key]['images'][0]  # 取第一张角色图
-                char_prompts.append(f'{char_name} is {char_prompt}')
-                char_images.append(char_image)
-            
-            # 3. 将角色描述词拼接到分镜信息中
-            # shot_prompt = (
-            #     f"{';'.join(char_prompts)}"  # 用;分隔多个角色描述
-            #     f"{shot['scene']};"
-            #     f"{shot['camera']};"
-            #     f"{shot['script']};"
-            #     f"{shot['plot']};"
-            # )
-
-            shot_prompt = (
-                f"{shot['camera']};"
-                f"{shot['plot']};"
-                f"{shot['script']};"
-                f"{';'.join(char_prompts)};"  # 用;分隔多个角色描述
-                f"{shot['scene']};"
+            Args:
+                story_data (dict): Contains 'shots' and 'characters' data
+                mode (str): Output mode selector:
+                    'all' - returns full shot data
+                    'prompt' - returns merged prompts only
+                    'image' - returns image paths only  
+                    'char_prompt' - returns character prompts only
+                    
+            Returns:
+                Varied: Processed data according to specified mode
                 
-            )
+            Raises: 
+                ValueError: If invalid mode is specified
+            """
+            shots = story_data["shots"]
+            characters = story_data["characters"]
 
-            shots_all.append({
-                "prompt": shot_prompt,
-                "image_paths": char_images,
-                "char_prompt": char_prompts
-            })
-            shots_prompt.append(shot_prompt)
-            shots_image.append(char_images)
-            chars_prompt.append(char_prompts)
+            # Initialize output containers
+            shots_all = []      # Complete processed shots
+            shots_prompt = []   # Merged prompt strings
+            shots_image = []    # Image path collections  
+            chars_prompt = []   # Individual character prompts
 
-            # print(f'prompt:{shot_prompt}')
-            # print(f'image_paths:{char_images}')
-        if mode == 'all':
-            return shots_all
-        elif mode == 'prompt':
-            return shots_prompt
-        elif mode == 'image':
-            return shots_image
-        elif mode == 'char_prompt':
-            return chars_prompt
-        else:
-            raise
+            for shot in shots:
+                # 1. Extract character references from shot
+                char_keys = []
+                char_names = []
+                char_prompts = []
+                char_images = []
+                
+                for char_key, char_name in zip(shot['character_key'], shot['character_name']):
+                    # Validate character exists in library
+                    if char_key not in characters:
+                        print(f"Warning: Character {char_key} not defined in character library")
+                        continue
+                    
+                    char_key = char_key.strip()
+                    char_keys.append(char_key)
+                    char_names.append(char_name)
+
+                    # 2. Extract character metadata
+                    char_prompt = characters[char_key]['prompt']
+                    # char_image = characters[char_key]['images']  # All images of this character
+                    char_image = characters[char_key]['images'][0]  # First image of this character only
+                    
+                    # Format character description
+                    char_prompts.append(f'{char_name} is {char_prompt}')
+                    char_images.append(char_image)
+                
+                # 3. Construct merged shot prompt
+                # shot_prompt = (
+                #     f"{';'.join(char_prompts)}" # Separate multiple character descriptions with ;
+                #     f"{shot['scene']};"
+                #     f"{shot['camera']};"
+                #     f"{shot['script']};"
+                #     f"{shot['plot']};"
+                # )
+                shot_prompt = (
+                    f"{shot['camera']};"
+                    f"{shot['plot']};" 
+                    f"{shot['script']};"
+                    f"{';'.join(char_prompts)};" # Separate multiple character descriptions with ;
+                    f"{shot['scene']};"
+                )
+
+                shots_all.append({
+                    "prompt": shot_prompt,
+                    "image_paths": char_images,
+                    "char_prompt": char_prompts
+                })
+                shots_prompt.append(shot_prompt)
+                shots_image.append(char_images)
+                chars_prompt.append(char_prompts)
+
+                # print(f'prompt:{shot_prompt}')
+                # print(f'image_paths:{char_images}')
+
+            if mode == 'all':
+                return shots_all
+            elif mode == 'prompt':
+                return shots_prompt
+            elif mode == 'image':
+                return shots_image
+            elif mode == 'char_prompt':
+                return chars_prompt
+            else:
+                raise ValueError(f"Invalid mode specified: {mode}")
+
+
+def load_config(config_path='config.yaml'):
+    """Load configuration from YAML file"""
+    config_path = Path(config_path)
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+    return {}  # Return empty dict if file not found
 
 def main():
-    data_path = "/data/AIGC_Research/Story_Telling/StoryVisBMK/data"
-    dataset_name = 'WildStory'
-    dataset_path = f"{data_path}/dataset/{dataset_name}"
+
+    grandparent_dir = Path(__file__).resolve().parent.parent.parent.parent
+    print(f'grandparent_dir: {grandparent_dir}')
+
+    data_path = f'{grandparent_dir}/data'
+    code_path = f'{grandparent_dir}/code'
+    print(f'data_path: {data_path}')
+    print(f'code_path: {code_path}')
+    
+    base_parser = argparse.ArgumentParser(description='Application path configuration', add_help=False)
+    base_parser.add_argument('--config', type=str, default=f'{code_path}/config.yaml', help='Path to configuration file (default: config.yaml)')
+    base_args, _ = base_parser.parse_known_args()  # Parse only known args
+    config = load_config(base_args.config)
+    
+    parser = argparse.ArgumentParser(
+        description='Story Dataset Processing Tool',
+        parents=[base_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+
+    parser.add_argument('--dataset_path', type=str, default=config.get('dataset_path') or f'{data_path}/dataset', help='Directory for datasets')
+    args = parser.parse_args()
+
+    _dataset_path = args.dataset_path
+
+    print(f'_dataset_path:{_dataset_path}')
+
+
+    dataset_name = 'ViStory'
+    dataset_path = f"{_dataset_path}/{dataset_name}"
 
     dataset = StoryDataset(dataset_path)
     story_name_list = dataset.get_story_name_list()
-    print(f'\n故事名列表：{story_name_list}')
+    print(f'\nStory name list: {story_name_list}')
 
     language="en"
     # language="ch"
 
-    # 加载所有故事（英文）
+    # Load all stories (English)
     stories_data = dataset.load_stories(story_name_list, language)
-    # print(f'\n读取所有故事信息{stories_data}')
+    # print(f'\nRead all story information {stories_data}')
     
     print('\n' \
-    '\\\\\\\\\\\\\\\\\\\\\ 细粒度信息提取示例 \\\\\\\\\\\\\\\\\\\\\ ')
-    # 示例：提取第一个故事的第一个分镜
-    story_name = '01'  # 假设存在编号为01的故事
+    '\\\\\\\\\\\\\\\\\\\\\ Fine-grained Information Extraction Example \\\\\\\\\\\\\\\\\\\\\ ')
+    # Example: Extract the first shot of the first story
+    story_name = '01'  # Assuming there is a story numbered 01
     story_data = stories_data[story_name]
 
     type = story_data["type"]
     print(f"""
-    故事 {story_name} 的故事类型: {type}
-    """)  # 输出: "Children's Picture Books"
+    Story {story_name} story type: {type}
+    """)  # Output: "Children's Picture Books"
 
     shots = story_data["shots"]
     first_shot = shots[0]
     print(f"""
-    第一个分镜:
-    - 索引: {first_shot['index']}
-    - 布景: {first_shot['scene']}
-    - 主观剧情: {first_shot['plot']}
-    - 登场角色: {first_shot['character_name']}
-    - 登场角色关键词: {first_shot['character_key']}
-    - 客观描述: {first_shot['script']}
-    - 镜头设计: {first_shot['camera']}
+    First shot:
+    - Index: {first_shot['index']}
+    - Scene: {first_shot['scene']}
+    - Subjective plot: {first_shot['plot']}
+    - Character name: {first_shot['character_name']}
+    - Character key: {first_shot['character_key']}
+    - Objective description: {first_shot['script']}
+    - Camera design: {first_shot['camera']}
     """)
     
-    # 示例：提取第一个角色信息
-    characters = story_data["characters"] # 角色库
+    # Example: Extract the first character information
+    characters = story_data["characters"] # Character library
     keys_list = list(characters.keys())
     values_list = list(characters.values())
     characters_1_key = keys_list[0]
     characters_1_value = values_list[0]
     print(f"""
-    角色 {characters_1_key}:
-    - 名字: {characters_1_value['name']}
-    - 名字关键词: {characters_1_value['key']}
-    - 描述: {characters_1_value['prompt']}
-    - 人/非人: {characters_1_value['tag']}
-    - 参考图: {characters_1_value['images']}
+    Character {characters_1_key}:
+    - Name: {characters_1_value['name']}
+    - Name key: {characters_1_value['key']}
+    - Description: {characters_1_value['prompt']}
+    - Human/Non-human: {characters_1_value['tag']}
+    - Reference images: {characters_1_value['images']}
     """)
 
 
-    # 提示词拆解与合并
+    # Prompt decomposition and merging
     shots_all = dataset.story_prompt_merge(story_data,mode='all')
     shots_prompt = dataset.story_prompt_merge(story_data,mode='prompt')
     shots_image = dataset.story_prompt_merge(story_data,mode='image')
     print(f"""
-    提示词拆解与合并:
-    - shots_all取第一个镜头: 
+    Prompt decomposition and merging:
+    - take the first shot of shots_all: 
         {shots_all[0].keys()}
-    - shots_all取第一个镜头的prompt: 
+    - take the prompt from the first shot of shots_all: 
         {shots_all[0]['prompt']}
-    - shots_all取第一个镜头的所有角色的image: 
+    - take all character images from the first shot of shots_all: 
         {shots_all[0]['image_paths']}
-    - shots_all取第一个镜头的第一个角色的image: 
+    - take the first character image from the first shot of shots_all: 
         {shots_all[0]['image_paths'][0]}
-    - shots_all取第一个镜头的第一个角色的第一张image: 
+    - take the first image of the first character from the first shot of shots_all: 
         {shots_all[0]['image_paths'][0][0]}
     \n
     - shots_prompt: {shots_prompt[0]}
@@ -282,7 +357,7 @@ def main():
 
 
 
-    # 定义颜色代码
+    # Define color codes
     COLOR = {
         "HEADER": "\033[95m",
         "BLUE": "\033[94m",
@@ -296,26 +371,23 @@ def main():
     }
 
     print(f"""
-    {COLOR['HEADER']}提示词拆解与合并:{COLOR['END']}
-    {COLOR['BLUE']}■ shots_all取第一个镜头:{COLOR['END']} 
+    {COLOR['HEADER']}Prompt decomposition and merging:{COLOR['END']}
+    {COLOR['BLUE']}■ take first shot of shots_all:{COLOR['END']} 
         {COLOR['YELLOW']}Keys: {COLOR['GREEN']}{list(shots_all[0].keys())}{COLOR['END']}
 
-    {COLOR['BLUE']}■ 镜头描述:{COLOR['END']}
+    {COLOR['BLUE']}■ Shot description:{COLOR['END']}
         {COLOR['CYAN']}{shots_all[0]['prompt'][:50]}...{COLOR['END']}
 
-    {COLOR['BLUE']}■ 角色图像路径:{COLOR['END']}
-        {COLOR['YELLOW']}所有角色: {COLOR['END']}
+    {COLOR['BLUE']}■ Character image paths:{COLOR['END']}
+        {COLOR['YELLOW']}All characters: {COLOR['END']}
         {COLOR['UNDERLINE']}{shots_all[0]['image_paths']}{COLOR['END']}
 
-        {COLOR['YELLOW']}首个角色: {COLOR['END']}
-        {COLOR['RED']}{shots_all[0]['image_paths'][0]}{COLOR['END']}
+        {COLOR['YELLOW']}First character: {COLOR['END']}
+        {COLOR['BOLD']}{shots_all[0]['image_paths'][0]}{COLOR['END']}
 
-        {COLOR['YELLOW']}具体文件: {COLOR['END']}
-        {COLOR['BOLD']}{shots_all[0]['image_paths'][0][0]}{COLOR['END']}
-
-    {COLOR['GREEN']}◆ 合并结果预览:{COLOR['END']}
-        {COLOR['CYAN']}Prompt: {shots_prompt[0][:30]}...{COLOR['END']}
-        {COLOR['CYAN']}Images: {len(shots_image[0])}张{COLOR['END']}
+    {COLOR['GREEN']}◆ Merge result preview:{COLOR['END']}
+        {COLOR['CYAN']}Prompt: {shots_prompt[0][:100]}...{COLOR['END']}
+        {COLOR['CYAN']}Images: {len(shots_image[0])} images{COLOR['END']}
     """)
 
 

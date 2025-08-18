@@ -11,29 +11,34 @@ def find_all_image_paths(method, base_path, datetime_pattern, image_extensions,
                          model_mode_for_storygen=None
                          ):
     
-    story_image_paths = {}
+    stories_image_paths = {}
 
-    # 获取base_path下所有子目录作为group_id
+    # Get all subdirectories under base_path as group_id
     all_groups_id = [d for d in os.listdir(base_path) 
                     if os.path.isdir(os.path.join(base_path, d))]
     all_groups_id.sort(key=lambda x: int(x))
 
-    # 遍历所有存在的组目录
+    # Iterate through all existing group directories
     print(f'all_groups_id: {all_groups_id}') # 01 02 ... 80
     for group_id in all_groups_id:
-        shot_image_paths = []  # 每个组单独初始化
+
+        stories_image_paths[group_id] = {}
+
+        shot_image_paths = []
+        char_image_paths = []
+
         if style_mode_for_storydiffusion:
             group_dir = os.path.join(base_path, group_id, style_mode_for_storydiffusion)
         else:
             group_dir = os.path.join(base_path, group_id)
         
-        # 获取所有日期时间子目录
+        # Get all datetime subdirectories
         datetime_dirs = [d for d in os.listdir(group_dir) 
                         if os.path.isdir(os.path.join(group_dir, d)) 
                         and datetime_pattern.match(d)]
         datetime_dirs.sort(key=lambda x: datetime.strptime(x.replace('_', '-'), "%Y%m%d-%H%M%S"))
-        # 遍历每个日期时间目录
-        datetime_dirs = [datetime_dirs[-1]]  # 只取最后一个目录
+        # Iterate through each datetime directory
+        datetime_dirs = [datetime_dirs[-1]] # Only take the last directory
         # print(f'datetime_dirs: {datetime_dirs}')
         for datetime_dir in datetime_dirs:
             if scale_stage_for_storyadapter:
@@ -47,17 +52,17 @@ def find_all_image_paths(method, base_path, datetime_pattern, image_extensions,
                     process_videos_in_folder(input_folder, output_folder)
             else:
                 datetime_path = os.path.join(group_dir, datetime_dir)
-            # 收集所有图片文件
+            # Collect all image files
             for filename in natsorted(os.listdir(datetime_path)):
                 file_path = os.path.join(datetime_path, filename)
 
                 if method == 'seedstory':
                     if (os.path.isfile(file_path) and 
                         filename.lower().endswith(image_extensions) and 
-                        # 新增文件名前缀条件
+                        # New filename prefix condition
                         (
-                            # filename.startswith('00') or  # 前两位是00
-                            filename[:3].lower() == 'ori')):  # 前三位是ori（不区分大小写）
+                            # filename.startswith('00') or  # First two digits are 00
+                            filename[:3].lower() == 'ori')): # First three characters are 'ori' (case insensitive)
                         shot_image_paths.append(file_path)
 
                 elif model_type_for_movieagent == 'ROICtrl':
@@ -83,31 +88,37 @@ def find_all_image_paths(method, base_path, datetime_pattern, image_extensions,
                         filename.lower().endswith(image_extensions)):
                         shot_image_paths.append(file_path)
 
-        story_image_paths[group_id] = natsorted(shot_image_paths)  # 使用实际目录名作为key
-    
-    return story_image_paths, all_groups_id
+        # stories_image_paths[group_id] = natsorted(shot_image_paths)  # Use actual directory name as key
+        stories_image_paths[group_id]['shots'] = natsorted(shot_image_paths)
+        stories_image_paths[group_id]['chars'] = char_image_paths  # Use actual directory name as key
+        
+    return stories_image_paths, all_groups_id
 
 
 
 
 def find_all_image_paths_without_timestamp(method, base_path, image_extensions):
     
-    story_image_paths = {}
+    stories_image_paths = {}
 
-    # 获取base_path下所有子目录作为group_id
+    # Get all subdirectories under base_path as group_id
     all_groups_id = [d for d in os.listdir(base_path) 
                     if os.path.isdir(os.path.join(base_path, d))]
     all_groups_id.sort(key=lambda x: int(x))
 
-    # 遍历所有存在的组目录
+    # Iterate through all existing group directories
     print(f'all_groups_id: {all_groups_id}')  # 01 02 ... 80
     for group_id in all_groups_id:
-        shot_image_paths = []  # 每个组单独初始化
+
+        stories_image_paths[group_id] = {}
+
+        shot_image_paths = []  # Initialize each group separately
+        char_image_paths = []
 
         group_dir = os.path.join(base_path, group_id)
         shot_dir = group_dir
         
-        # 收集当前分镜目录下的图片文件
+        # Collect image files in current shot directory
         for filename in natsorted(os.listdir(shot_dir)):
             file_path = os.path.join(shot_dir, filename)
 
@@ -115,9 +126,11 @@ def find_all_image_paths_without_timestamp(method, base_path, image_extensions):
                 filename.lower().endswith(image_extensions)):
                 shot_image_paths.append(file_path)
 
-        story_image_paths[group_id] = shot_image_paths  # 使用实际目录名作为key
-    
-    return story_image_paths, all_groups_id
+        # stories_image_paths[group_id] = shot_image_paths  # Use actual directory name as key
+        stories_image_paths[group_id]['shots'] = shot_image_paths  # Use actual directory name as key
+        stories_image_paths[group_id]['chars'] = char_image_paths  # Use actual directory name as key
+
+    return stories_image_paths, all_groups_id
 
 
 
@@ -125,33 +138,47 @@ def find_all_image_paths_without_timestamp(method, base_path, image_extensions):
 
 def find_all_image_paths_for_business(method, base_path, image_extensions):
     
-    story_image_paths = {}
+    stories_image_paths = {}
 
-    # 获取base_path下所有子目录作为group_id
+    # Get all subdirectories under base_path as group_id
     all_groups_id = [d for d in os.listdir(base_path) 
                     if os.path.isdir(os.path.join(base_path, d))]
     all_groups_id.sort(key=lambda x: int(x))
 
-    # 遍历所有存在的组目录
+    # Iterate through all existing group directories
     print(f'all_groups_id: {all_groups_id}')  # 01 02 ... 80
     for group_id in all_groups_id:
-        shot_image_paths = []  # 每个组单独初始化
+
+        stories_image_paths[group_id] = {}
+
+        shot_image_paths = []  # Initialize each group separately
+        char_image_paths = []
 
         group_dir = os.path.join(base_path, group_id)
         
-        # 查找所有以"分镜"结尾的子目录
+        # Find all subdirectories ending with "shot"
         shot_dir = None
+        char_dir = None
         for d in os.listdir(group_dir):
             dir_path = os.path.join(group_dir, d)
             if os.path.isdir(dir_path) and d.endswith('分镜'):
                 shot_dir = dir_path
-        
-        # 检查是否存在分镜目录
+            elif os.path.isdir(dir_path) and d.endswith('角色'):
+                char_dir = dir_path
+            # if os.path.isdir(dir_path) and d.endswith('20250500_000000'):
+            #     shot_dir = dir_path
+
+        # Check if shot directory exists
         if not shot_dir:
-            print(f"Warning: 分镜目录不存在于组目录 - {group_dir}")
-            story_image_paths[group_id] = []  # 添加空列表
+            print(f"Warning: Shot directory does not exist in group directory - {group_dir}")
+            stories_image_paths[group_id] = []  # Add empty list
             continue
-            
+
+        if not char_dir:
+            print(f"Warning: Shot directory does not exist in group directory - {group_dir}")
+            stories_image_paths[group_id]['chars'] = []  # Add empty list
+            continue
+
         # if method in ("moki", "xunfeihuiying"):
         #     name_suffix = "_1"
         # elif method == "morphic_studio":
@@ -160,15 +187,13 @@ def find_all_image_paths_for_business(method, base_path, image_extensions):
         #     name_suffix = ""
 
         if method in ("moki", "xunfeihuiying", "morphic_studio"):
-            # 双重后缀验证闭包
             def suffix_check(base_name):
                 return base_name.endswith("_1") or base_name.endswith("-1")
         else:
-            # 其他业务不验证后缀
             def suffix_check(_):
                 return True
             
-        # 收集当前分镜目录下的图片文件
+        # Collect image files in current shot directory
         for filename in natsorted(os.listdir(shot_dir)):
             file_path = os.path.join(shot_dir, filename)
 
@@ -176,14 +201,23 @@ def find_all_image_paths_for_business(method, base_path, image_extensions):
                 base, ext = os.path.splitext(filename)
                 ext = ext.lower()
                 
-                # 双重验证：扩展名匹配 + 文件名后缀匹配
                 if ext in image_extensions and suffix_check(base):
                     shot_image_paths.append(file_path)
+
+
+        # Collect image files in current character directory
+        for filename in natsorted(os.listdir(char_dir)):
+            file_path = os.path.join(char_dir, filename)
+
+            if os.path.isfile(file_path):
+                char_image_paths.append(file_path)
+
 
             # if (os.path.isfile(file_path) and 
             #     filename.lower().endswith(image_extensions)):
             #     shot_image_paths.append(file_path)
 
-        story_image_paths[group_id] = shot_image_paths  # 使用实际目录名作为key
+        stories_image_paths[group_id]['shots'] = shot_image_paths  # Use actual directory name as key
+        stories_image_paths[group_id]['chars'] = char_image_paths  # Use actual directory name as key
     
-    return story_image_paths, all_groups_id
+    return stories_image_paths, all_groups_id
