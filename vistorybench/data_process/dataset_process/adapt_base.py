@@ -26,7 +26,7 @@ if __name__ == "__main__":
     print(f'grandparent_dir: {grandparent_dir}')
 
     data_path = f'{grandparent_dir}/data'
-    code_path = f'{grandparent_dir}/code'
+    code_path = f'{grandparent_dir}/vistorybench'
     print(f'data_path: {data_path}')
     print(f'code_path: {code_path}')
     

@@ -25,7 +25,7 @@ adaface_path = os.path.join(os.path.dirname(__file__), 'AdaFace')
 if adaface_path not in sys.path:
     sys.path.insert(0, adaface_path)
 
-from AdaFace.inference import load_pretrained_model, to_input, adaface_models
+from .AdaFace.inference import load_pretrained_model, to_input, adaface_models
 ADAFACE_AVAILABLE = True
 
 from facexlib.detection import init_detection_model

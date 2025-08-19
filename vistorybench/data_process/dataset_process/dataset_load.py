@@ -13,7 +13,12 @@ class StoryDataset:
     def get_story_name_list(self):
         """Get list of all story names from the dataset directory"""        
         # Sort by number (e.g. 01, 02,...)
-        entries = os.listdir(self.root_dir)
+        entries =[]
+        for item in os.listdir(self.root_dir):
+            item_path = os.path.join(self.root_dir, item)
+            if os.path.isdir(item_path) and item.isdigit():
+                entries.append(item)
+
         return sorted(
             [entry for entry in entries if os.path.isdir(os.path.join(self.root_dir, entry))],
             key=lambda x: int(x) if x.isdigit() else 0
@@ -257,7 +262,7 @@ def main():
     print(f'grandparent_dir: {grandparent_dir}')
 
     data_path = f'{grandparent_dir}/data'
-    code_path = f'{grandparent_dir}/code'
+    code_path = f'{grandparent_dir}/vistorybench'
     print(f'data_path: {data_path}')
     print(f'code_path: {code_path}')
     

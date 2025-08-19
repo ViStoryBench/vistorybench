@@ -11,6 +11,7 @@ import time
 
 import yaml
 from pathlib import Path
+from data_process.outputs_read.read_outputs import load_outputs
 
 def blue_print(text, bright=True):
     color_code = "\033[94m" if bright else "\033[34m"
@@ -36,95 +37,6 @@ def load_dataset(_dataset_path, dataset_name, language):
     # print(f'\nAll stories: {stories_data}')
 
     return stories_data
-    
-def load_outputs(outputs_path, method, dataset_name, language):
-
-    # ///////////////////// Image /////////////////////
-    if method == 'uno':
-        from data_process.outputs_read.read_outputs import read_uno_outputs
-        stories_image_paths = read_uno_outputs(
-            outputs_path, method, dataset_name, language)
-
-    elif method == 'storygen':
-        from data_process.outputs_read.read_outputs import read_storygen_outputs
-        stories_image_paths = read_storygen_outputs(
-            outputs_path, method, dataset_name, language,
-            model_mode)
-
-    elif method == 'storyadapter':
-        from data_process.outputs_read.read_outputs import read_storyadapter_outputs
-        stories_image_paths = read_storyadapter_outputs(
-            outputs_path, method, dataset_name, language,
-            content_mode,
-            scale_stage)
-
-    elif method == 'storydiffusion':
-        from data_process.outputs_read.read_outputs import read_storydiffusion_outputs
-        stories_image_paths = read_storydiffusion_outputs(
-            outputs_path, method, dataset_name, language,
-            content_mode,
-            style_mode)
-
-    elif method == 'seedstory':
-        from data_process.outputs_read.read_outputs import read_seedstory_outputs
-        stories_image_paths = read_seedstory_outputs(
-            outputs_path, method, dataset_name, language)
-
-    elif method == 'theatergen':
-        from data_process.outputs_read.read_outputs import read_theatergen_outputs
-        stories_image_paths = read_theatergen_outputs(
-            outputs_path, method, dataset_name, language)
-
-    # ///////////////////// Video /////////////////////
-    elif method == 'movieagent':
-        from data_process.outputs_read.read_outputs import read_movieagent_outputs
-        stories_image_paths = read_movieagent_outputs(
-            outputs_path, method, dataset_name, language,
-            model_type)
-        
-    elif method == 'animdirector':
-        from data_process.outputs_read.read_outputs import read_animdirector_outputs
-        stories_image_paths = read_animdirector_outputs(
-            outputs_path, method, dataset_name, language,
-            model_type)
-    
-    elif method == 'mmstoryagent':
-        from data_process.outputs_read.read_outputs import read_mmstoryagent_outputs
-        stories_image_paths = read_mmstoryagent_outputs(
-            outputs_path, method, dataset_name, language)
-        
-    elif method == 'vlogger':
-        from data_process.outputs_read.read_outputs import read_vlogger_outputs
-        stories_image_paths = read_vlogger_outputs(
-            outputs_path, method, dataset_name, language,
-            content_mode)
-
-    # ///////////////////// Closed source /////////////////////
-    elif method in CLOSED_SOURCE:
-        from data_process.outputs_read.read_outputs import read_mllm_outputs
-        stories_image_paths = read_mllm_outputs(
-            outputs_path, method, dataset_name, language)
-
-    # ///////////////////// Business /////////////////////
-    elif method in BUSINESS:
-        from data_process.outputs_read.read_outputs import read_business_outputs
-        stories_image_paths = read_business_outputs(
-            outputs_path, method, dataset_name, language)
-        
-    # ///////////////////// Naive baseline /////////////////////
-    elif method in NAIVE:
-        from data_process.outputs_read.read_outputs import read_naive_outputs
-        stories_image_paths = read_naive_outputs(
-            outputs_path, method, dataset_name, language)
-
-    # ///////////////////// Custom Method /////////////////////
-    else:
-        from data_process.outputs_read.read_outputs import read_custom_outputs
-        stories_image_paths = read_custom_outputs(
-            outputs_path, method, dataset_name, language)
-
-    return stories_image_paths
-
 
 import json
 def input_data_json_save(story_data, outputs_data):
@@ -533,15 +445,15 @@ def get_cids_score_and_save(model_pkg, pretrain_path,
 
     # Create result directory structure
     if ref_mode == 'origin':
-        base_save_dir = f'{outputs_path}/{method}/bench_results/{cids_type}/{timestamp}/{story_name}'
+        base_save_dir = f'{result_path}/{method}/bench_results/{cids_type}/{timestamp}/{story_name}'
     elif ref_mode == 'mid-gen':
-        base_save_dir = f'{outputs_path}/{method}/bench_results/{cids_type}_{ref_mode}/{timestamp}/{story_name}'
+        base_save_dir = f'{result_path}/{method}/bench_results/{cids_type}_{ref_mode}/{timestamp}/{story_name}'
 
-    if method == 'storyadapter':
-        base_save_dir = f'{base_save_dir}/{scale_stage}'
+    # if method == 'storyadapter':
+    #     base_save_dir = f'{base_save_dir}/{scale_stage}'
 
     
-    from cids import CIDS  # Import the CIDS class we completed earlier
+    from bench.content.cids import CIDS  # Import the CIDS class we completed earlier
     start_time = time.time()
 
     print(f'cids_mode:{ref_mode}')
@@ -689,7 +601,7 @@ def get_prompt_align_score_and_save(story_data, outputs_data):
     from bench.prompt_align.gpt_eval import StoryTellingEvalBench
 
     print(f'Current Method：{method}')
-    save_dir= f"{outputs_path}/{method}/bench_results/prompt_align/{timestamp}"
+    save_dir= f"{result_path}/{method}/bench_results/prompt_align/{timestamp}"
 
     story_case = stories_outputs[f'{story_name}']['shots']
     filename_base = save_filename_extra(story_case, method, 'prompt_align')
@@ -713,7 +625,6 @@ def save_outputs_in_same_format(oss_imgs_path, outputs_data):
 
     # Copy and rename the files in sequence
     for index, src_path in enumerate(outputs_data, 1):  # Count from 1
-        # 生成新文件名（如 shot_01.png）
         # Generate new file name (e.g., shot_01.png)
         new_filename = f"shot_{index:02d}.png"
         dest_path = os.path.join(oss_imgs_path, new_filename)
@@ -795,7 +706,7 @@ if __name__ == "__main__":
     grandparent_dir = Path(__file__).resolve().parent.parent
     print(f'grandparent_dir: {grandparent_dir}')
 
-    code_path = f'{grandparent_dir}/code'
+    code_path = f'{grandparent_dir}/vistorybench'
     data_path = f'{grandparent_dir}/data'
     print(f'code_path: {code_path}')
     print(f'data_path: {data_path}')
@@ -814,6 +725,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset_path', type=str, default=config.get('dataset_path') or f'{data_path}/dataset', help='Directory for datasets')
     parser.add_argument('--outputs_path', type=str, default=config.get('outputs_path') or f'{data_path}/outputs', help='Directory for generated outputs')
     parser.add_argument('--pretrain_path', type=str, default=config.get('pretrain_path') or f'{data_path}/pretrain', help='Directory for pretrained models')
+    parser.add_argument('--result_path', type=str,default=config.get('result_path') or f'{data_path}/results', help='Directory for results')
     parser.add_argument('--model_id', type=str, default=config.get('model_id') or 'gpt-4.1', help='model_id of gpt api for prompt align score')
     parser.add_argument('--api_key', type=str, default=config.get('api_key') or '', help='api_key of gpt api for prompt align score')
     parser.add_argument('--base_url', type=str, default=config.get('base_url') or '', help='base_url of gpt api for prompt align score')
@@ -829,11 +741,14 @@ if __name__ == "__main__":
     parser.add_argument('--prompt_align', action='store_true', help='get Text-Image alignment VLM Score? (default: False)')
     parser.add_argument('--diversity', action='store_true', help='get Generative Image Inception Score? (default: False)')
 
-    parser.add_argument('--language', type=str, choices=['en', 'ch'], default='en', help='Language option: en (English) or ch (Chinese)')
+    parser.add_argument('--language', type=str, choices=['en', 'ch'],nargs='+', default='en', help='Language option: en (English) or ch (Chinese)')
     parser.add_argument('--method', type=str, nargs='+', required=True, 
                         help='Method option (accepts one or multiple values)')
                         # choices=ALL_METHODS, help='Method option')
                         # choices=ALL_METHODS+['STORY_IMG','STORY_VIDEO','CLOSED_SOURCE','BUSINESS','NAIVE'], help='Method option')
+    parser.add_argument('--timestamp', type=str, default=None,nargs='+', help='Timestamp for the output files. %Y%m%d_%H%M%S')
+    parser.add_argument('--mode', type=str, default=None, nargs='+',help='Mode for method.')
+    parser.add_argument('--last_timestamp', type=bool, default=False, help='Only use the last timestamp for the output files.')
 
     # for storydiffusion, storyadapter
     parser.add_argument('--content_mode', type=str, 
@@ -876,6 +791,7 @@ if __name__ == "__main__":
     dataset_path = args.dataset_path
     outputs_path = args.outputs_path
     pretrain_path = args.pretrain_path
+    result_path = args.result_path
 
     print(f'dataset_path:{dataset_path}')
     print(f'outputs_path:{outputs_path}')
@@ -934,10 +850,9 @@ if __name__ == "__main__":
             mode_name_for_oss = 'base'
         else:
             mode_name_for_oss = 'base'
-
         
         stories_data = load_dataset(dataset_path, dataset_name, language)
-        stories_outputs = load_outputs(outputs_path, method, dataset_name, language)
+        stories_outputs = load_outputs(outputs_root=outputs_path, methods=method,languages=language,modes=args.mode,return_latest=args.last_timestamp,timestamps=args.timestamp)
 
         enable_cids_score = args.cids
         enable_cross_csd_score = args.csd_cross
@@ -978,7 +893,6 @@ if __name__ == "__main__":
             if dataset_story_name != outputs_story_name:
                 yellow_print(f"Story number in generated results mismatch that in full source dataset: story_name mismatch: {dataset_story_name} != {outputs_story_name}")
 
-
         for outputs_story_name, outputs_data in stories_outputs.items():
             for dataset_story_name, story_data in stories_data.items():
 
@@ -999,17 +913,6 @@ if __name__ == "__main__":
                     if len(story_data['shots']) != len(outputs_data['shots']):
                         yellow_print(f"Shot number of current story in generated results mismatch that in source dataset: {len(story_data['shots'])} != {len(outputs_data['shots'])}")
 
-                    # if story_name < '35':
-                    #     continue
-
-                    # input_data_json_save(story_data, outputs_data)
-
-                    if enable_restore:
-                        green_print(f'[Save Outputs] Resaving the generated results in the same format...')
-                        outputs_standardize_path = f'{data_path}/outputs_standardize'
-                        outputs_imgs_standardize_path = f'{outputs_standardize_path}/{method}/{mode_name_for_oss}/{dataset_name}/{language}/{story_name}/shots'
-                        save_outputs_in_same_format(outputs_imgs_standardize_path, outputs_data['shots'])
-
                     if enable_cids_score:
                         green_print(f'[Cross and self CIDS Score] Calculating the character consistency')
                         story_data_path = f"{dataset_path}/{dataset_name}/{story_name}"
@@ -1020,17 +923,17 @@ if __name__ == "__main__":
                     if enable_cross_csd_score:
                         green_print(f'[Cross-CSD Score] Calculating the style similarity between the reference and generated images...')
                         cross_csd_shot_details, avg_cross_csd = get_cross_csd_score(csd_encoder, story_data, outputs_data)
-                        save_csd_to_excel_and_json(cross_csd_shot_details, avg_cross_csd, method, language, outputs_path, 'cross_csd')
+                        save_csd_to_excel_and_json(cross_csd_shot_details, avg_cross_csd, method, language, result_path, 'cross_csd')
 
                     if enable_self_csd_score:
                         green_print(f'[Self-CSD Score] Calculating the style similarity between the generated images...')
                         self_csd_shot_details, avg_self_csd = get_self_csd_score(csd_encoder, outputs_data['shots'])
-                        save_csd_to_excel_and_json(self_csd_shot_details, avg_self_csd, method, language, outputs_path, 'self_csd')
+                        save_csd_to_excel_and_json(self_csd_shot_details, avg_self_csd, method, language, result_path, 'self_csd')
 
                     if enable_aesthetic_score: 
                         green_print(f'[Aesthetic Score] Calculating the aesthetic score of the generated image...')
                         aesthetic_shot_details, avg_aesthetic = get_aesthetic_score(aesthetic_metric, outputs_data['shots'])
-                        save_aesthetic_to_excel_and_json(aesthetic_shot_details, avg_aesthetic, method, language, outputs_path, 'aesthetic_score')
+                        save_aesthetic_to_excel_and_json(aesthetic_shot_details, avg_aesthetic, method, language, result_path, 'aesthetic_score')
 
                     if enable_prompt_align_score: 
                         green_print(f'[Prompt Align and OCCM] Calculating the VLM score for image-prompt alignment...')

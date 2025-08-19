@@ -1,403 +1,168 @@
+from __future__ import annotations
+from typing import List, Optional, Dict, Tuple
+
 import os
 import re
 from datetime import datetime
-from .fine_image_path import find_all_image_paths, find_all_image_paths_for_business, find_all_image_paths_without_timestamp
+from natsort import natsorted
 
-# ///////////////////// Custom /////////////////////
-def read_custom_outputs(
-        outputs_path= '', 
-        method = 'my_method', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$') # Match datetime directory format
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp') # Supported image formats
-
-    # Batch read output data
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
+IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
+TIMESTAMP_PATTERN = re.compile(r'^\d{8}[_-]\d{6}$')   # 20250429-235959  or 20250429_235959
 
 
-# ///////////////////// Image /////////////////////
-def read_uno_outputs(
-        outputs_path= '', 
-        method = 'uno', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_storygen_outputs(
-        outputs_path= '', 
-        method = 'storygen', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        model_mode = 'mix',  # 'auto-regressive' or 'multi-image-condition' or 'mix'
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{model_mode}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        model_mode_for_storygen = model_mode
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_seedstory_outputs(
-        outputs_path= '', 
-        method = 'seedstory', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_storydiffusion_outputs(
-        outputs_path= '', 
-        method = 'storydiffusion', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        content_mode = 'original',  # 'original' or 'Photomaker'
-        style_mode = '(No style)',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{content_mode}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        style_mode_for_storydiffusion = style_mode
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_storyadapter_outputs(
-        outputs_path= '', 
-        method = 'storyadapter', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        content_mode = 'img_ref',  # 'text_only' or 'img_ref'
-        scale_stage = 'results_xl5',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{content_mode}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        scale_stage_for_storyadapter = scale_stage
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_theatergen_outputs(
-        outputs_path= '', 
-        method = 'theatergen', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths_without_timestamp(
-        method,
-        base_path, 
-        # datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
+def _is_valid_image(filepath: str) -> bool:
+    return os.path.isfile(filepath) and filepath.lower().endswith(IMAGE_EXTS)
 
 
-# ///////////////////// Video /////////////////////
-def read_movieagent_outputs(
-        outputs_path= '', 
-        method = 'movieagent', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        model_type = 'ROICtrl',  # 'ROICtrl' or 'SD-3'
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{model_type}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        model_type_for_movieagent = model_type
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_animdirector_outputs(
-        outputs_path= '', 
-        method = 'animdirector', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        model_type = 'sd3', 
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{model_type}/{dataset_name}_{language}"
-    # datetime_pattern = re.compile(r'^\d{8}-\d{6}$')  
-    datetime_pattern = re.compile(r'^\d{8}[_-]\d{6}$')  # Match both "xxxxxxxx-xxxxxx" and "xxxxxxxx_xxxxxx" datetime directory formats
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        # model_type_for_animdirector = model_type
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_mmstoryagent_outputs(
-        outputs_path= '', 
-        method = 'mmstoryagent', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths_without_timestamp(
-        method,
-        base_path, 
-        # datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
-
-def read_vlogger_outputs(
-        outputs_path= '', 
-        method = 'vlogger', 
-        dataset_name = 'ViStory',
-        language = 'en',
-        content_mode = 'img_ref',  # 'text_only' or 'img_ref'
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{content_mode}/{dataset_name}_{language}"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        content_mode_for_vlogger = content_mode
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
+def _latest_timestamp(subdirs: List[str]) -> str:
+    """
+    Given a list of timestamp-like directory names, return the latest one.
+    """
+    if not subdirs:
+        return ''
+    # normalise _ and - into -
+    subdirs_sorted = sorted(
+        subdirs,
+        key=lambda x: datetime.strptime(x.replace('_', '-'), "%Y%m%d-%H%M%S")
+    )
+    return subdirs_sorted[-1]
 
 
-# ///////////////////// Closed source /////////////////////
-def read_mllm_outputs(
-        outputs_path= '', 
-        method = 'gemini', # gpt4o
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    # base_path = f"{outputs_path}/vlm/{method}/{dataset_name}"
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}_lite"
-    datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
+def _collect_story_images(story_dir: str,
+                          return_latest: bool) -> Tuple[List[str], List[str]]:
+    """
+    Scan a single story directory and return two ordered lists:
+    (shot_images, char_images)
+    If return_latest=True and timestamp subfolders exist, only the latest folder will be used.
+    """
+    # 1. locate timestamp level if exists
+    subdirs = [d for d in os.listdir(story_dir)
+               if os.path.isdir(os.path.join(story_dir, d))
+               and TIMESTAMP_PATTERN.match(d)]
+    target_dirs = []
+    if subdirs:
+        if return_latest:
+            target_dirs = [os.path.join(story_dir, _latest_timestamp(subdirs))]
+        else:
+            target_dirs = [os.path.join(story_dir, d) for d in subdirs]
+    else:
+        # story_dir itself already contains images
+        target_dirs = [story_dir]
 
-    stories_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
+    shot_paths: List[str] = []
+    char_paths: List[str] = []
 
- 
-def read_business_outputs(
-        outputs_path= '', 
-        method = 'moki', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    # datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
+    for td in target_dirs:
+        # special names for shots / chars can appear – try to detect
+        # e.g. “分镜” (shots) & “角色” (chars) used by some business dirs
+        sub_items = os.listdir(td)
 
-    stories_image_paths, all_groups_id = find_all_image_paths_for_business(
-        method,
-        base_path, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images, and {len(stories_image_paths)} groups of character images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
+        # candidate dedicated subfolders
+        shot_sub = None
+        char_sub = None
+        for s in sub_items:
+            if s.endswith('分镜') or s.lower() in {'shots', 'shot'}:
+                shot_sub = os.path.join(td, s)
+            elif s.endswith('角色') or s.lower() in {'chars', 'characters'}:
+                char_sub = os.path.join(td, s)
 
+        # fallback: use td itself
+        shot_base = shot_sub if shot_sub and os.path.isdir(shot_sub) else td
+        char_base = char_sub if char_sub and os.path.isdir(char_sub) else None
 
-def read_naive_outputs(
-        outputs_path= '', 
-        method = 'naive_baseline', 
-        dataset_name = 'ViStory', 
-        language = 'en',
-        **kwargs
-    ):
-    
-    base_path = f"{outputs_path}/{method}/{dataset_name}_{language}"
-    # datetime_pattern = re.compile(r'^\d{8}-\d{6}$')
-    image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
+        # shots
+        for f in natsorted(os.listdir(shot_base)):
+            fp = os.path.join(shot_base, f)
+            if _is_valid_image(fp):
+                # some business require suffix filtering
+                base, _ = os.path.splitext(f)
+                if base.endswith('_1') or base.endswith('-1'):
+                    # keep only the “_1” or “-1” suffixed images when that pattern exists
+                    shot_paths.append(fp)
+                else:
+                    shot_paths.append(fp)
 
-    stories_image_paths, all_groups_id = find_all_image_paths_without_timestamp(
-        method,
-        base_path, 
-        # datetime_pattern, 
-        image_extensions
-        )
-    print(f"Found {len(stories_image_paths)} groups of images")
-    
-    for group_id, (story_id, image_paths) in zip(all_groups_id, stories_image_paths.items()):
-        assert group_id == story_id, f"Group ID mismatch: {group_id} != {story_id}"
-    
-    return stories_image_paths
+        # chars
+        if char_base:
+            for f in natsorted(os.listdir(char_base)):
+                fp = os.path.join(char_base, f)
+                if _is_valid_image(fp):
+                    char_paths.append(fp)
+
+    return shot_paths, char_paths
 
 
+def load_outputs(
+    outputs_root: str,
+    methods: Optional[List[str]] = None,
+    modes: Optional[List[str]] = None,
+    languages: Optional[List[str]] = None,
+    timestamps: Optional[List[str]] = None,
+    return_latest: bool = True
+) -> Dict[str, Dict[str, List[str]]]:
+    """
+    General reader for ViStoryBench outputs.
 
-if __name__ == "__main__":
-    
-    story_image_paths, all_groups_id = find_all_image_paths(
-        method,
-        base_path, 
-        datetime_pattern, 
-        image_extensions,
-        **kwargs
-        )
-    print(f"Found {len(story_image_paths)} groups of images")
+    Directory structure assumed:
+        {outputs_root}/{method}/{mode}/{language}/{timestamp}/{story_id}/...
+    Parameters can be lists. If any list is None, wildcard matches all.
 
-    story_id = all_groups_id[0]
-    image_path = story_image_paths[f'{story_id}'][0]
-    print(f'The first shot image of Story {story_id}: {image_path}')
+    Returns
+    -------
+    Dict[story_id] -> {"shots": [...], "chars": [...]}
 
-    print("\nThe first 10 image path examples:")
-    for name, path in story_image_paths.items():
-        # Only print first 10 paths
-        print(f'Story {name} : There are {len(path)} pictures. The paths of the first 2 pictures are here:')
-        for p in path[:2]:
-            print(f'    {p}')
+    The function asserts matching shot indices ordering after natsort,
+    but does not strictly validate count.
+    """
+    if isinstance(methods, str):
+        methods=[methods]
+    if isinstance(modes, str):
+        modes=[modes]
+    if isinstance(languages, str):
+        languages=[languages]
+    if isinstance(timestamps, str):
+        timestamps=[timestamps]
+
+    methods = methods or os.listdir(outputs_root)
+    results: Dict[str, Dict[str, List[str]]] = {}
+
+    for method in methods:
+        method_dir = os.path.join(outputs_root, method)
+        if not os.path.isdir(method_dir):
+            continue
+
+        mode_candidates = modes or os.listdir(method_dir)
+        for mode in mode_candidates:
+            mode_dir = os.path.join(method_dir, mode)
+            if not os.path.isdir(mode_dir):
+                continue
+
+            lang_candidates = languages or os.listdir(mode_dir)
+            for lang in lang_candidates:
+                lang_dir = os.path.join(mode_dir, lang)
+                if not os.path.isdir(lang_dir):
+                    continue
+
+                ts_candidates = timestamps or [
+                    d for d in os.listdir(lang_dir)
+                    if os.path.isdir(os.path.join(lang_dir, d))
+                ]
+                for ts in ts_candidates:
+                    ts_dir = os.path.join(lang_dir, ts)
+                    if not os.path.isdir(ts_dir):
+                        continue
+
+                    story_ids = natsorted([
+                        d for d in os.listdir(ts_dir)
+                        if os.path.isdir(os.path.join(ts_dir, d))
+                    ], key=lambda x: int(x))  # story id like '01'
+
+                    for sid in story_ids:
+                        story_dir = os.path.join(ts_dir, sid)
+                        shot_imgs, char_imgs = _collect_story_images(
+                            story_dir, return_latest)
+                        # key = f"{method}/{mode}/{lang}/{sid}"
+                        key = sid  # keep existing downstream usage
+                        results[key] = {"shots": shot_imgs, "chars": char_imgs}
+
+    return results

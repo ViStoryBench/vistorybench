@@ -466,7 +466,7 @@ if __name__ == "__main__":
     grandparent_dir = Path(__file__).resolve().parent.parent
     print(f'grandparent_dir: {grandparent_dir}')
 
-    code_path = f'{grandparent_dir}/code'
+    code_path = f'{grandparent_dir}/vistorybench'
     data_path = f'{grandparent_dir}/data'
     print(f'code_path: {code_path}')
     print(f'data_path: {data_path}')
@@ -482,11 +482,11 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    parser.add_argument('--dataset_path', type=str, default=config.get('dataset_path') or f'{data_path}/dataset', help='Directory for datasets')
-    parser.add_argument('--outputs_path', type=str, default=config.get('outputs_path') or f'{data_path}/outputs', help='Directory for generated outputs')
-    parser.add_argument('--avg_score_path', type=str, default=config.get('avg_score_path') or f'{data_path}/avg_score', help='Directory for all method avg score')
-    parser.add_argument('--pretrain_path', type=str, default=config.get('pretrain_path') or f'{data_path}/pretrain', help='Directory for pretrained weights')
-    
+    parser.add_argument('--dataset_path', type=str, default=f'{data_path}/dataset', help='Directory for datasets')
+    parser.add_argument('--outputs_path', type=str, default=f'{data_path}/outputs', help='Directory for generated outputs')
+    parser.add_argument('--avg_score_path', type=str, default=f'{data_path}/avg_score', help='Directory for all method avg score')
+    parser.add_argument('--pretrain_path', type=str, default=f'{data_path}/pretrain', help='Directory for pretrained weights')
+
     parser.add_argument('--full', action='store_true', help='Average scores on Full Dataset')
     parser.add_argument('--lite', action='store_true', help='Average scores on Lite Dataset')
     parser.add_argument('--real', action='store_true', help='Average scores on Real Dataset')

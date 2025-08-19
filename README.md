@@ -152,43 +152,53 @@ You can modify your method's story visualization inference scripts according to 
 Make sure your generated results are organized according to the following folder structure:
 ```
 data/outputs/
-└── method_name/
-    └── dataset_name/
-        └── story_id/
-            └── timestamp/
-                ├── shot_XX.jpg
-                └── ...
+├── method_name/
+│   └── mode_name/
+│       └── language_name/
+│           └── timestamp/
+│               ├── story_id/
+│               │   ├── shot_XX.png
+│               │   └── ...
+│               └── 02/
+│                   └── ...
+└── method_2/
+    └── ...
 ```
 
 - `method_name`: The model used (e.g., StoryDiffusion, UNO, GPT4o, etc.)
-- `dataset_name`: The dataset used (e.g., ViStory_en)
+- `mode_name`: The mode used of method(e.g., base, SD3, etc.)
+- `language_name`: The language used (e.g., en, ch)
+- `timestamp`: Generation run timestamp (YYYYMMDD_HHMMSS) (e.g., 20250000_111111)
 - `story_id`: The story identifier (e.g., 01, 02, etc.)
-- `timestamp`: Generation run timestamp (YYYYMMDD-HHMMSS) (e.g., 20250000-111111)
 - `shot_XX.jpg`: Generated image for the shot
 
 **Example of UNO:**
 ```
 data/outputs/
-└── uno/
-    └── ViStory_en/
-        ├── 01/
-        │   └── 20250509-010630/
-        │       ├── 0_0.png
-        │       └── ...
-        └── 02/
-            └── ...
+├── uno/
+│   └── base/
+│       └── en/
+│           └── 20250000-111111/
+│               ├── 01/
+│               │   ├── 00.png
+│               │   └── ...
+│               └── 02/
+│                   └── ...
+└── method_2/
+    └── ...
 ```
 **Example of your method:**
 ```
 data/outputs/
 ├── method_1/
-│   └── ViStory_en/
-│       ├── 01/
-│       │   └── 20250000-111111/
-│       │       ├── 00.png
-│       │       └── ...
-│       └── 02/
-│           └── ...
+│   └── mode_1/
+│       └── language_1/
+│           └── 20250000-111111/
+│               ├── 01/
+│               │   ├── 00.png
+│               │   └── ...
+│               └── 02/
+│                   └── ...
 └── method_2/
     └── ...
 ```
@@ -204,7 +214,8 @@ When you run the evaluation code, it will automatically perform data reading (en
 
 We provide an automated pretrain-weight download script that allows you to download all the following weights with a single command. 
 ```bash
-cd ViStoryBench
+sudo apt update
+sudo apt install aria2
 sh download_weights.sh
 ```
 * All of them will be saved in `data/pretrain`.
@@ -286,18 +297,12 @@ ViStoryBench/
 │   ├── dataset_processed/ # if enable 'Dataset Adapting'
 │   ├── outputs/
 │   ├── pretrain/
+│   ├── result/
 │   └── ...
 ├── README.md
 └── requirements.txt
 ```
-If using custom paths, please full the corresponding paths in `code/config.yaml` to reflect your system's absolute file locations:
-```yaml
-pretrain_path: /absolute/path/to/your/pretrain      # Pre-trained weights directory
-dataset_path: /absolute/path/to/your/dataset     # Dataset root directory
-processed_dataset_path: /absolute/path/to/your/dataset_processed # Processed dataset root directory
-outputs_path: /absolute/path/to/your/outputs      # Outputs result root directory
-avg_score_path: /absolute/path/to/your/avg_score # Outputs average score root directory
-```
+
 
 If enable `gpt eval` for `prompt alignment`, please full your gpt api in `code/config.yaml`.
 ```yaml
@@ -316,7 +321,7 @@ git clone --recursive https://github.com/mk-minchul/AdaFace.git
 
 Navigate to the source code directory:
 ```bash
-cd ViStoryBench/code
+cd ViStoryBench/vistorybench
 ```
 
 **Example of UNO:**
@@ -354,7 +359,7 @@ python bench_run.py --method 'method_1' 'method_2' --save_format # Run it to sta
 --diversity # inception score
 ```
 #### ⭐️ The pre-defined methods include::
-```bash
+```python
 STORY_IMG = ['uno', 'seedstory', 'storygen', 'storydiffusion', 'storyadapter', 'theatergen']
 STORY_VIDEO = ['movieagent', 'animdirector', 'vlogger', 'mmstoryagent']
 CLOSED_SOURCE = ['gemini', 'gpt4o']
@@ -388,3 +393,5 @@ python bench_total_avg.py --method 'method_1' 'method_2' --full --lite # Run it 
   year={2025}
 }
 ```
+## ⭐️ Star History
+[![Star History Chart](https://api.star-history.com/svg?repos=ViStoryBench/vistorybench&type=Date)](https://www.star-history.com/#ViStoryBench/vistorybench&Date)
