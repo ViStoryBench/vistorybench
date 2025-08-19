@@ -12,11 +12,11 @@ https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 
 ## 🚩 News
 - [ ] **[2025]** Leaderboard maintain and new story visualization method evaluation.
-- [x] **[2025/08/xx]** Code update for full benchmark implementation.
-- [x] **[2025/08/12]** arXiv v3 updated.
-- [x] **[2025/06/25]** arXiv v2 updated.
-- [x] **[2025/05/30]** We release the technical report v1 on arXiv.
-- [x] **[2025/05/21]** We release the initial project and code. 
+- [x] **[2025.08.19]** Code update for full benchmark implementation.
+- [x] **[2025.08.12]** arXiv v3 updated.
+- [x] **[2025.06.25]** arXiv v2 updated.
+- [x] **[2025.05.30]** We release the technical report v1 on arXiv.
+- [x] **[2025.05.21]** We release the initial project and code. 
 
 ## 🛠️ Setup
 
