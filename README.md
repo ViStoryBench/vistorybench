@@ -67,7 +67,7 @@ Alternatively, you can download it by following these steps:
 
 📥 Download our [ViStory Datasets](https://huggingface.co/datasets/ViStoryBench/ViStoryBench) (🤗huggingface) 
 and save it in `data/dataset`.
-* If you use a custom path, please full `dataset_path` in `code/config.yaml`.
+* If you use a custom path, please full `dataset_path` in `vistorybench/config.yaml`.
 
 <!-- ```python
 from huggingface_hub import snapshot_download
@@ -101,14 +101,14 @@ Use our standardized loading script
 `dataset_load.py` or your own data loader.
 Run this command to verify successful dataset loading:
 ```bash
-pyhton code/data_process/dataset_process/dataset_load.py
+pyhton vistorybench/data_process/dataset_process/dataset_load.py
 ```
 
 ### 2.2. Dataset Adapting 
 
 > Aligning the dataset format with the specified method's input requirements.
 
-Pre-built dataset conversion scripts are available for several pre-defined methods, all located in `code/data_process/dataset_process`. `adapt_base.py` is a template script for dataset conversion. All pre-built dataset conversion scripts are created based on this template.
+Pre-built dataset conversion scripts are available for several pre-defined methods, all located in `vistorybench/data_process/dataset_process`. `adapt_base.py` is a template script for dataset conversion. All pre-built dataset conversion scripts are created based on this template.
 - `adapt_base.py`
 - `adapt2animdirector.py`
 - `adapt2seedstory.py`,
@@ -120,17 +120,17 @@ Pre-built dataset conversion scripts are available for several pre-defined metho
 
 **Example of UNO:**
 ```bash
-python code/data_process/dataset_process/adapt2uno.py \
+python vistorybench/data_process/dataset_process/adapt2uno.py \
 --language 'en' # choice=['en','ch']
 ```
 
 You can create a script to convert the ViStory/ViStory-lite dataset into your method's required input format (Based on template script `adapt_base.py`).
 * The converted dataset will be saved to `data/dataset_processed`. 
-* If you use a custom path, please full `processed_dataset_path` in `code/config.yaml`
+* If you use a custom path, please full `processed_dataset_path` in `vistorybench/config.yaml`
 
 ### 2.3. Inference custom
 
-Pre-modify inference scripts of several pre-defined methods are available for reference, all located in `code/data_process/inference_custom`.
+Pre-modify inference scripts of several pre-defined methods are available for reference, all located in `vistorybench/data_process/inference_custom`.
 - `movieagent/run_custom.py`
 - `seedstory/vis_custom_sink.py`
 - `storyadapter/run_custom.py`
@@ -142,7 +142,7 @@ Pre-modify inference scripts of several pre-defined methods are available for re
 
 You can modify your method's story visualization inference scripts according to the specified requirements. 
 * We suggest saving generated results to `data/outputs`.
-* If you use a custom path, please full `outputs_path` in `code/config.yaml`
+* If you use a custom path, please full `outputs_path` in `vistorybench/config.yaml`
 
 > **SD Embed**. Our ViStory Dataset contains extensive complex text descriptions. However, not all models support long-text inputs. To overcome the 77-token prompt limitation in Stable Diffusion, we utilize [sd_embed](https://github.com/xhinker/sd_embed) to generate long-weighted prompt embeddings for lengthy text.
 
@@ -206,7 +206,7 @@ data/outputs/
 
 ### 3.2 Automated Reading
 When you run the evaluation code, it will automatically perform data reading (ensure both the ViStoryBench dataset and the generated results conform to the standard directory structure specified above). The generated-results reading code has been uniformly integrated into the following file:
-`code/data_process/outputs_read/read_outputs.py`
+`vistorybench/data_process/outputs_read/read_outputs.py`
 
 
 ## <span style="color: orange">4. Evaluation!</span> 😺
@@ -220,7 +220,7 @@ sudo apt install aria2
 sh download_weights.sh
 ```
 * All of them will be saved in `data/pretrain`.
-* If you use a custom path, please full `pretrain_path` in `code/config.yaml`.
+* If you use a custom path, please full `pretrain_path` in `vistorybench/config.yaml`.
 
 Alternatively, you can download them separately by following these steps:
 
@@ -291,7 +291,7 @@ wget -P /data/pretrain/aesthetic_predictor https://github.com/discus0434/aesthet
 If you follow all default configurations, the ViStoryBench folder structure will be organized as follows:
 ```
 ViStoryBench/
-├── code/
+├── vistorybench/
 │   └── ...
 ├── data/
 │   ├── dataset/
@@ -305,16 +305,16 @@ ViStoryBench/
 ```
 
 
-If enable `gpt eval` for `prompt alignment`, please full your gpt api in `code/config.yaml`.
+If enable `gpt eval` for `prompt alignment`, please full your gpt api in `vistorybench/config.yaml`.
 ```yaml
 model_id: 'gpt-4.1' # or other model
 api_key: 'your_api_key'
 base_url: 'your_base_url'
 ```
 
-If using `adaface` in `CIDS`, please clone the repository `AdaFace` into `code/bench/content`: 
+If using `adaface` in `CIDS`, please clone the repository `AdaFace` into `vistorybench/bench/content`: 
 ```bash
-cd ViStoryBench/code/bench/content
+cd ViStoryBench/vistorybench/bench/content
 git clone --recursive https://github.com/mk-minchul/AdaFace.git
 ```
 
@@ -383,7 +383,7 @@ python bench_total_avg.py --method 'method_1' 'method_2' --full --lite # Run it 
 --unreal # unreal stories in vistory dataset
 --custom # customized stories in vistory dataset
 ```
-* If you wish to specify average scores for certain stories, modify or add the story names in `CUSTOM_DATA` in `code/bench_total_avg.py`, and enable it by `--custom`.
+* If you wish to specify average scores for certain stories, modify or add the story names in `CUSTOM_DATA` in `vistorybench/bench_total_avg.py`, and enable it by `--custom`.
 
 ## 📚 Citation
 ```bibtex
