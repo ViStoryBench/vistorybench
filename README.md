@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 ### Download
 ```bash
 git clone --recursive https://github.com/ViStoryBench/vistorybench.git
-cd ViStoryBench
+cd vistorybench
 ```
 ### Environment
 ```bash
