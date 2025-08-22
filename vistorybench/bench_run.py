@@ -313,7 +313,6 @@ def get_self_csd_score(csd_encoder, outputs_data):
         csd_score = csd_score_tensor[1].item()
         print(f'The {i+1}th Shot Style Similarity Score: {csd_score}')
 
-        # 记录分镜详情
         shot_details.append({
             "index": i+1,
             "score": csd_score,

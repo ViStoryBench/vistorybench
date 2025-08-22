@@ -1,0 +1,3 @@
+[submodule "vistorybench/bench/content/AdaFace"]
+	path = vistorybench/bench/content/AdaFace
+	url = https://github.com/mk-minchul/AdaFace
