@@ -1,0 +1,37 @@
+# ViStoryBench Configuration (simplified)
+
+core:
+  paths:
+    dataset: data/dataset
+    outputs: data/outputs
+    pretrain: data/pretrain
+    results: data/bench_results
+  runtime:
+    device: cuda
+
+evaluators:
+  prompt_align:
+    gpt:
+      model: gpt-4.1-mini-2025-04-14
+      base_url: 
+      api_key:
+      workers: 16
+
+  cids:
+    ref_mode: origin
+    use_multi_face_encoder: true
+    ensemble_method: average
+    detection:
+      dino:
+        box_threshold: 0.25
+        text_threshold: 0.25
+    encoders:
+      clip:
+        model_id: openai/clip-vit-large-patch14
+    matching:
+      superfluous_threshold: 0.8
+      topk_per_nochar: 5
+    ensemble_weights:
+      arcface: 0.4
+      adaface: 0.4
+      facenet: 0.2

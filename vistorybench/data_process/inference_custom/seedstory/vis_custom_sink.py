@@ -269,7 +269,7 @@ for j in range(len(story_name_list)):
 
     # A = output['has_img_output']
     # B = image_embeds.shape[0]
-    # print(f'output[has_img_output]：{A}和image_embeds.shape[0]：{B}')
+    # print(f"output[has_img_output]: {A} and image_embeds.shape[0]: {B}")
     # while output['has_img_output'] and image_embeds.shape[0] < story_len:
     # while image_embeds.shape[0] < story_len:
     while output['has_img_output'] and text_id <= story_len:

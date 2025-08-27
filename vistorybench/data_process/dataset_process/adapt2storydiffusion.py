@@ -97,7 +97,7 @@ class StoryConverter:
                 
         #         # Generated character image path
         #         # sanitized_name = char_name.replace(" ", "_")
-        #         char_path = characters[f'{char_name}']['images'][0] #取第一张角色图
+        #         char_path = characters[f'{char_name}']['images'][0]  # take the first character image
         #         if os.path.exists(char_path):
         #             image_paths.append(char_path)
         #         else:

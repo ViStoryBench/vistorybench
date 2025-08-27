@@ -218,7 +218,7 @@ storyadapter = model_load()
 seed = 42
 print(seed)
 for (story_key, story),(image_key, image) in zip(StorySet.items(),StorySet_image.items()):
-    assert story_key == image_key, f"story_name不匹配：{story_name} != {story_name}"
+    assert story_key == image_key, f"story_name mismatch: {story_name} != {story_name}"
     story_name = story_key
     
     # if story and story_name not in [f"{i:02d}" for i in range(1, 32)]:

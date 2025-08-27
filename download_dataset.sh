@@ -2,7 +2,7 @@
 
 # Create directory
 mkdir -p data/dataset
-
+export HF_ENDPOINT=https://hf-mirror.com
 # Download dataset
 echo "📥 Downloading ViStory dataset..."
 python -c "

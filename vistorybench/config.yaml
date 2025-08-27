@@ -1,4 +1,0 @@
-# config for prompt alignment score
-model_id: '' # your model
-api_key: '' #'your_api_key'
-base_url: '' #'your_base_url'

@@ -210,84 +210,60 @@ def process_directory(root_dir, device): # Pass device
 
     return results
 
-def inception_score_for_folder(image_dir, data_path, method, 
+def inception_score_for_folder(image_dir, data_path, method,
                                CHOICE_DATASET, label,
-                               save_dir, filename_base, 
+                               result_manager,
                                batch_size=32, splits=1, device=None):
     """
-    Recursively traverse all images under image_dir, calculate Inception Score, and save results to specified directory.
+    Recursively traverse all images under image_dir, calculate Inception Score, and save results using ResultManager.
 
     Args:
-        image_dir (str): Image folder that needs recursive traversal.
-        data_path (str): Data root directory, used for output path concatenation.
-        method (str): Method name, used for output path concatenation.
+        image_dir (str or dict): Image folder or dictionary of image paths.
+        data_path (str): Data root directory.
+        method (str): Method name.
+        CHOICE_DATASET (list): List of story names for the current dataset split.
+        label (str): The label for the dataset split (e.g., 'Full', 'Lite').
+        result_manager (ResultManager): The result manager instance.
         batch_size (int): Batch size.
         splits (int): IS split count.
         device (str): Device (optional).
     Returns:
         dict: Result dictionary.
-        str: Saved json path.
     """
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Recursively collect all images
-    # image_files = []
-    # for dirpath, _, filenames in os.walk(image_dir):
-    #     for filename in filenames:
-    #         if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-    #             image_files.append(os.path.join(dirpath, filename))
-    # image_files.sort()
-    # print(f"Found {len(image_files)} images for IS calculation.")
-
-
-    # print(f'image_dir:{image_dir}')
-
-    # Recursively collect all images (safely exclude bench results directory)
     image_files = []
     if isinstance(image_dir, str):
-        exclude_dir = "bench results"  # Directory name to exclude
+        exclude_dir = "bench_results"
         for dirpath, dirs, filenames in os.walk(image_dir):
-            # Existence check + exclusion logic
-            if exclude_dir in dirs and os.path.join(dirpath, exclude_dir):
-                dirs.remove(exclude_dir)  # Prevent os.walk from entering this directory
-
-            # Collect image files
+            if exclude_dir in dirs:
+                dirs.remove(exclude_dir)
             for filename in filenames:
                 if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                     image_files.append(os.path.join(dirpath, filename))
-
         image_files.sort()
-        print(f"Found {len(image_files)} images for IS calculation (excluded {exclude_dir} directory).")
-        
+        print(f"Found {len(image_files)} images for IS calculation (excluded '{exclude_dir}' directory).")
     elif isinstance(image_dir, dict):
         for story_name, image_paths in image_dir.items():
             if story_name in CHOICE_DATASET:
-                image_files.extend(image_paths['shots'])  # Merge each scene's path list into total list
-
+                image_files.extend(image_paths['shots'])
         image_files.sort()
-        # Verify results
-        print(f"Combined {len(image_files)} image paths (Print first 3 paths):")
-        for path in image_files[:3]:  # Print first 3 paths as examples
-            print(f" - {path}")
+        print(f"Combined {len(image_files)} image paths for dataset '{label}'.")
 
-    # print(f'all image_files:{image_files}')
-
+    if not image_files:
+        print(f"No images found for method '{method}' and dataset '{label}'. Skipping IS calculation.")
+        return None
 
     start_time = time.time()
     is_mean, is_std = calculate_inception_score(image_files, batch_size=batch_size, splits=splits, device=device)
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"Time-consuming of single story IS Score: {elapsed_time:.4f} seconds")
-    
-    # Generate timestamp
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    if not save_dir:
-        save_dir = os.path.join(data_path, 'outputs', method, 'bench_results', 'inception_score', timestamp)
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f'{filename_base}_in_{label}_data.json')
-    result = {
+    print(f"Time-consuming for IS Score on '{label}' dataset: {elapsed_time:.4f} seconds")
+
+    result_dict = {
         "method_name": method,
+        "dataset_label": label,
         "total_images_processed": len(image_files),
         "aggregate_scores": {
             "generated_diversity": {
@@ -295,29 +271,13 @@ def inception_score_for_folder(image_dir, data_path, method,
                 "inception_score_std": is_std
             }
         },
-        "elapsed_time(seconds)":elapsed_time
+        "elapsed_time(seconds)": elapsed_time
     }
-    with open(save_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
-    print(f"IS results saved to {save_path}")
-    return result, save_path
 
-
-
-def get_inception_score_and_save(
-        method, stories_outputs, data_path,
-        CHOICE_DATASET, label,
-        save_dir, filename_base):
-    # --- Configuration ---
-    # root_output_directory = "processed_outputs"  # Example root directory
-    method_path= f'{data_path}/outputs/{method}'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"Using device: {device}")
-    inception_score_for_folder(
-        stories_outputs, data_path, method, 
-        CHOICE_DATASET, label,
-        save_dir, filename_base,
-        batch_size=32, splits=1, device=device)
+    result_manager.save_metric_result(f"diversity_{label}", scores=result_dict)
+    print(f"IS results for '{label}' dataset saved via ResultManager.")
+    
+    return result_dict
 
 
 

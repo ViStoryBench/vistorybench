@@ -1,5 +1,5 @@
 #!/bin/bash
-
+export HF_ENDPOINT=https://hf-mirror.com
 # Function to read YAML file
 get_yaml_value() {
     local yaml_file=$1
@@ -11,7 +11,7 @@ get_yaml_value() {
 CONFIG_FILE="vistorybench/config.yaml"
 PRETRAIN_DIR=$(get_yaml_value "$CONFIG_FILE" "pretrain_path")
 if [ -z "$PRETRAIN_DIR" ]; then
-    echo "Error: pretrain_dir not found in config.yaml"
+    echo "Error: pretrain_path not found in config.yaml"
     exit 1
 fi
 

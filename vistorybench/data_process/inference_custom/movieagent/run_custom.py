@@ -374,7 +374,7 @@ class ScriptBreakAgent:
             }
 
             # if self.sample_model == "ROICtrl":
-            #     plot = shot.get("coarse_plot", "")  # 对应 Coarse Plot
+            #     plot = shot.get("coarse_plot", "")  # corresponds to Coarse Plot
             # else:
             #     plot = shot_info["plot"]
 

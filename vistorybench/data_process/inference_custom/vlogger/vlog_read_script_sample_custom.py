@@ -329,7 +329,7 @@ if __name__ == "__main__":
 
     for story_name in story_name_list:
 
-        # if story_name in [f'{i:02d}' for i in range(1, 9)]:  # '01'到'08'
+        # if story_name in [f'{i:02d}' for i in range(1, 9)]:  # '01' to '08'
         #     continue
 
         # if '01' <= story_name <= '43':

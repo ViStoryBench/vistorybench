@@ -11,7 +11,7 @@ base_data_path = f"{data_path}/dataset/ViStory"
 story_path = os.path.join(base_data_path, story_id)
 story_json_path = os.path.join(story_path, "story.json")
 image_base_path = os.path.join(story_path, "image")
-output_base_dir = f"./generated_stories_en/story_{story_id}" # 改个名区分
+output_base_dir = f"./generated_stories_en/story_{story_id}" # change name to distinguish
 
 pretrained_model_path = f'{pretrain_path}/haoningwu/StoryGen/checkpoint_StorySalon'
 num_inference_steps = 50

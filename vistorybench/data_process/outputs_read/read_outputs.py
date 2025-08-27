@@ -53,8 +53,8 @@ def _collect_story_images(story_dir: str,
     char_paths: List[str] = []
 
     for td in target_dirs:
-        # special names for shots / chars can appear – try to detect
-        # e.g. “分镜” (shots) & “角色” (chars) used by some business dirs
+        # Special names for shots / chars can appear — try to detect both English and Chinese folder names.
+        # For example some projects use Chinese directory names '分镜' (shots) and '角色' (chars).
         sub_items = os.listdir(td)
 
         # candidate dedicated subfolders

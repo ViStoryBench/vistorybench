@@ -19,6 +19,16 @@ https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 - [x] **[2025.05.30]** 📝 Technical report v1 released on arXiv.
 - [x] **[2025.05.21]** 🚀 Initial project launch and code release.
 
+## 🏛️ Architecture & Contribution
+ViStoryBench is designed with a modular and extensible architecture. The core of our evaluation pipeline is the `BaseEvaluator` abstract class, which allows for easy integration of new evaluation metrics.
+
+**Adding a New Evaluator:**
+1. Create a new class that inherits from `vistorybench.bench.base_evaluator.BaseEvaluator`.
+2. Implement the required methods (`__init__`, `evaluate`).
+3. Register your new evaluator in `vistorybench/bench_run.py`.
+
+We welcome contributions from the community! If you have a new metric or an improvement, please feel free to submit a pull request.
+
 ## 🛠️ Setup
 
 ### Download
@@ -209,7 +219,7 @@ When you run the evaluation code, it will automatically perform data reading (en
 `vistorybench/data_process/outputs_read/read_outputs.py`
 
 
-## <span style="color: orange">4. Evaluation!</span> 😺
+## <span style="color: orange">4. Evaluation & Analysis</span> 😺
 
 ### 4.1 Download Weights
 
@@ -287,79 +297,86 @@ wget -P /data/pretrain/aesthetic_predictor https://github.com/discus0434/aesthet
 * **Inception weights**. Download `inception_v3_google-0cc3c7bd.pth` automatically during initial execution.
 
 ---
-### 4.2 Running 🎲
-If you follow all default configurations, the ViStoryBench folder structure will be organized as follows:
-```
-ViStoryBench/
-├── vistorybench/
-│   └── ...
-├── data/
-│   ├── dataset/
-│   ├── dataset_processed/ # if enable 'Dataset Adapting'
-│   ├── outputs/
-│   ├── pretrain/
-│   ├── result/
-│   └── ...
-├── README.md
-└── requirements.txt
-```
-
-
-If enable `gpt eval` for `prompt alignment`, please full your gpt api in `vistorybench/config.yaml`.
-```yaml
-model_id: 'gpt-4.1' # or other model
-api_key: 'your_api_key'
-base_url: 'your_base_url'
-```
-
-If using `adaface` in `CIDS`, please clone the repository `AdaFace` into `vistorybench/bench/content`: 
-```bash
-cd ViStoryBench/vistorybench/bench/content
-git clone --recursive https://github.com/mk-minchul/AdaFace.git
-```
-
----
-
+### 4.2. Running Evaluation
 Navigate to the source code directory:
 ```bash
-cd ViStoryBench/vistorybench
+cd vistorybench
 ```
 
-**Example of UNO:**
+**Example Command:**
 ```bash
-sh bench_run.sh 'uno' # Run it for data integrity check
-sh bench_run.sh 'uno' --all # Run it for all evaluation
-sh bench_run.sh 'uno' --cids # Run it for character consistency eval
-sh bench_run.sh 'uno' --cids --csd_cross --csd_self # Run it for both character and style consistency eval
-sh bench_run.sh 'uno' --save_format # Run it to standardize the generated-results file structure.
+# Run all available metrics for the 'uno' method in English
+python bench_run.py --method uno --language en
+
+# Run only the CIDS and CSD metrics for 'uno'
+python bench_run.py --method uno --metrics cids csd --language en
+
+# Run all metrics for a specific timestamp
+python bench_run.py --method uno --language en --timestamp 20250824_141800
 ```
 
-**Example of your method:**
-```bash
-# You can use bench_run.sh for your method
-sh bench_run.sh 'method_1' # Run it for data integrity check
-sh bench_run.sh 'method_1' --all # Run it for all evaluation
-sh bench_run.sh 'method_1' --cids # Run it for character consistency eval
-sh bench_run.sh 'method_1' --cids --csd_cross --csd_self # Run it for both character and style consistency eval
-sh bench_run.sh 'method_1' --save_format # Run it to standardize the generated-results file structure.
+#### ⭐️ Key Parameters:
+- `--method` (Required): Specify the method (model) to evaluate (e.g., `uno`, `storydiffusion`).
+- `--metrics` (Optional): A space-separated list of metrics to run (e.g., `cids`, `csd`, `aesthetic`). If omitted, all registered evaluators will be executed.
+- `--language` (Required): The language of the dataset to evaluate (`en` or `ch`).
+- `--timestamp` (Optional): Specify a particular generation run to evaluate. If omitted, the latest run will be used.
+- `--mode` (Optional): Mode name for the method (e.g., `base`). Used to locate outputs under `outputs/<method>/<mode>/<language>/<timestamp>/`.
+- `--resume` (Optional, default: True):
+  - True: Use the specified `--timestamp` or the latest available timestamp.
+  - False: Create a new timestamp under results and write evaluation outputs there.
+- `--dataset_path`, `--outputs_path`, `--pretrain_path`, `--result_path` (Optional): Override core paths for dataset, generated outputs, pretrain weights, and evaluation results. Defaults come from YAML `core.paths` or built-in defaults.
+- `--api_key` (Optional): API key for PromptAlign GPT calls. If omitted, the evaluator reads from the environment variable `VISTORYBENCH_API_KEY`.
+- `--base_url`, `--model_id` (Optional): Override PromptAlign GPT endpoint and model ID for this run. These values override YAML `evaluators.prompt_align.gpt.base_url` / `model` at runtime.
 
-# You can use bench_run.py for your method
-python bench_run.py --method 'method_1' # Run it for data integrity check
-python bench_run.py --method 'method_1' 'method_2' # Run it for data integrity check
-python bench_run.py --method 'method_1' 'method_2' --cids # Run it for character consistency eval
-python bench_run.py --method 'method_1' 'method_2' --cids --csd_cross --csd_self # Run it for both character and style consistency eval
-python bench_run.py --method 'method_1' 'method_2' --save_format # Run it to standardize the generated-results file structure.
+Note:
+- Minimal YAML must include `core.runtime.device` (e.g., `cuda` or `cpu`).
+- PromptAlign optional config lives under `evaluators.prompt_align.gpt` (`model`, `base_url`). CLI `--model_id`/`--base_url` override these per-run without changing the YAML.
+#### ✅ Minimal config.yaml (required fields)
+
+Your config.yaml should be minimal and explicit. At minimum, specify device under core.runtime. Paths can remain defaults or be customized here.
+
+```yaml
+core:
+  paths:
+    dataset: data/dataset
+    outputs: data/outputs
+    pretrain: data/pretrain
+    results: data/bench_results
+  runtime:
+    device: cuda  # or cpu
+
+evaluators:
+  prompt_align:
+    gpt:
+      model: gpt-4.1           # optional override
+      base_url: https://api.openai.com  # optional override
+# Optional: CIDS knobs (uncomment to override defaults)
+#  cids:
+#    ref_mode: origin
+#    use_multi_face_encoder: false
+#    ensemble_method: average
+#    detection:
+#      dino:
+#        box_threshold: 0.25
+#        text_threshold: 0.25
+#    encoders:
+#      clip:
+#        model_id: openai/clip-vit-large-patch14
+#    matching:
+#      superfluous_threshold: 0.8
+#      topk_per_nochar: 5
+#    ensemble_weights:
+#      arcface: 0.4
+#      adaface: 0.4
+#      facenet: 0.2
 ```
-#### ⭐️ The available metrics for selection include:
-```bash
---cids # cross and self character consistency (reference-generated and generated-generated images)
---csd_cross # cross style similarity (reference-generated images)
---csd_self # self style similarity (generated-generated images)
---aesthetic # aesthetic score
---prompt_align # prompt alignment score
---diversity # inception score
-```
-#### ⭐️ The pre-defined methods include::
+
+Notes:
+- core.runtime.device is required at runtime; the tool will exit if missing.
+- PromptAlign API key is read from env var VISTORYBENCH_API_KEY or via --api_key.
+- CLI --base_url and --model_id override evaluators.prompt_align.gpt.base_url/model per run without changing YAML.
+
+#### ⭐️ The pre-defined methods include:
 ```python
 STORY_IMG = ['uno', 'seedstory', 'storygen', 'storydiffusion', 'storyadapter', 'theatergen']
 STORY_VIDEO = ['movieagent', 'animdirector', 'vlogger', 'mmstoryagent']
@@ -367,23 +384,30 @@ CLOSED_SOURCE = ['gemini', 'gpt4o']
 BUSINESS = ['moki', 'morphic_studio', 'bairimeng_ai', 'shenbimaliang', 'xunfeihuiying', 'doubao']
 ```
 
-**Average computation**.
-If you have already obtained all the detail scores on the `Full ViStory Dataset`, please run the following command to get the average scores for specific datasets (`Full`, `Lite`, `Real`, `Unreal` and `Custom`).
-```bash
-# You can use bench_total_avg.py for your method
-python bench_total_avg.py --method 'method_1' --full # Run it for method_1 average score on full vistory dataset
-python bench_total_avg.py --method 'method_1' 'method_2' --full # Run it for method_1 average score and method_2 average score on full vistory dataset
-python bench_total_avg.py --method 'method_1' 'method_2' --full --lite # Run it for method_1 average score and method_2 average score on full vistory dataset and lite vistory dataset
+### 4.3. Results Structure
+After running the evaluation, the results will be stored in the `data/bench_results` directory with the following structure:
+
 ```
-#### ⭐️ The available dataset for selection include:
-```bash
---full # full vistory dataset
---lite # lite vistory dataset
---real # real stories in vistory dataset
---unreal # unreal stories in vistory dataset
---custom # customized stories in vistory dataset
+data/bench_results/
+└── method_name/
+    └── mode_name/
+        └── language_name/
+            └── YYYYMMDD_HHMMSS/
+                ├── summary.json
+                ├── metadata.json
+                ├── cids/
+                │   ├── cids_results.json
+                │   └── ...
+                ├── csd/
+                │   ├── csd_self_results.json
+                │   └── csd_cross_results.json
+                └── ... (other metrics)
 ```
-* If you wish to specify average scores for certain stories, modify or add the story names in `CUSTOM_DATA` in `vistorybench/bench_total_avg.py`, and enable it by `--custom`.
+
+- **`summary.json`**: Contains the averaged scores for all metrics.
+- **`metadata.json`**: Stores metadata about the evaluation run (method, timestamp, etc.).
+- **Metric-specific directories (`cids/`, `csd/`, etc.)**: Contain detailed results for each metric.
+
 
 ## 📚 Citation
 ```bibtex
