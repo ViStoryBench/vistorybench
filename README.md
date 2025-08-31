@@ -408,6 +408,9 @@ data/bench_results/
 - **`metadata.json`**: Stores metadata about the evaluation run (method, timestamp, etc.).
 - **Metric-specific directories (`cids/`, `csd/`, etc.)**: Contain detailed results for each metric.
 
+## 📝 License
+The evaluation code for ViStoryBench is released under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0), while the ViStoryBench dataset is distributed under the [MIT License](https://choosealicense.com/licenses/mit/).
+
 
 ## 📚 Citation
 ```bibtex
