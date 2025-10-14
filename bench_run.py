@@ -5,9 +5,9 @@ from pathlib import Path
 import torch
 import sys
 
-from vistorybench.data_process.outputs_read.read_outputs import load_outputs
+from vistorybench.dataset_loader.read_outputs import load_outputs
 from vistorybench.result_management.manager import ResultManager
-from vistorybench.data_process.dataset_process.dataset_load import StoryDataset
+from vistorybench.dataset_loader.dataset_load import StoryDataset
 
 # Import all concrete evaluator classes
 from vistorybench.bench.content.cids_evaluator import CIDSEvaluator
@@ -37,10 +37,10 @@ def yellow_print(text):
 def green_print(text):
     print(f"\033[92m{text}\033[0m")
 
-def load_dataset(_dataset_path, dataset_name, language):
+def load_dataset(_dataset_path, dataset_name, language, split='full'):
     dataset_path = f"{_dataset_path}/{dataset_name}"
     dataset = StoryDataset(dataset_path)
-    story_name_list = dataset.get_story_name_list()
+    story_name_list = dataset.get_story_name_list(split=split)
     print(f'\nStory name list: {story_name_list}')
     stories_data = dataset.load_stories(story_name_list, language)
     return stories_data
@@ -92,6 +92,75 @@ def merge_config_with_args(config, args):
 
     return merged_config
 
+# --- Discovery helpers (outputs directory introspection) ---
+def list_subdirs(path: str):
+    try:
+        return sorted(
+            [
+                name
+                for name in os.listdir(path)
+                if not name.startswith(".") and os.path.isdir(os.path.join(path, name))
+            ]
+        )
+    except Exception:
+        return []
+
+
+def discover_languages(outputs_root: str, method: str):
+    """
+    Discover languages under outputs for a given method.
+    Supports both layouts:
+      - {outputs_root}/{method}/{language}/{mode}/{timestamp}/...
+      - {outputs_root}/{method}/{mode}/{language}/{timestamp}/...
+    """
+    method_dir = os.path.join(outputs_root, method)
+    # Prefer direct language directories under method
+    direct = [d for d in list_subdirs(method_dir) if d in ("en", "ch")]
+    if direct:
+        return direct
+
+    # Fallback: search under possible mode dirs for language names
+    found = set()
+    for sub in list_subdirs(method_dir):
+        for d in list_subdirs(os.path.join(method_dir, sub)):
+            if d in ("en", "ch"):
+                found.add(d)
+    return sorted(found)
+
+
+def discover_modes(outputs_root: str, method: str, language: str):
+    """
+    Discover modes for a given (method, language).
+    Supports both layouts:
+      - {outputs_root}/{method}/{language}/{mode}/...
+      - {outputs_root}/{method}/{mode}/{language}/...
+    """
+    # Prefer language-first layout: {method}/{language}/<mode>/
+    lang_dir = os.path.join(outputs_root, method, language)
+    if os.path.isdir(lang_dir):
+        return list_subdirs(lang_dir)
+
+    # Fallback: mode-first layout: {method}/{mode}/{language}/
+    method_dir = os.path.join(outputs_root, method)
+    found = []
+    for m in list_subdirs(method_dir):
+        if os.path.isdir(os.path.join(method_dir, m, language)):
+            found.append(m)
+    return sorted(found)
+
+
+def discover_timestamps(outputs_root: str, method: str, language: str, mode: str):
+    """
+    Discover timestamps for a given (method, language, mode).
+    Supports both layouts.
+    """
+    ts = set()
+    p1 = os.path.join(outputs_root, method, language, mode)
+    p2 = os.path.join(outputs_root, method, mode, language)
+    for p in (p1, p2):
+        for d in list_subdirs(p):
+            ts.add(d)
+    return sorted(ts)
 def main():
     base_parser = argparse.ArgumentParser(description='Application path configuration', add_help=False)
     base_parser.add_argument('--config', type=str, default=f'config.yaml', help='Path to configuration file')
@@ -114,12 +183,13 @@ def main():
     parser.add_argument('--model_id', type=str, default=None, help='Model ID for evaluation')
 
     # Evaluation settings
-    parser.add_argument('--method', type=str, required=True, help='Method name to evaluate.')
+    parser.add_argument('--method', type=str, nargs='+', required=True, help='Method name(s) to evaluate. Accept multiple values.')
     parser.add_argument('--metrics', type=str, nargs='+', choices=list(EVALUATOR_REGISTRY.keys()), default=None, help='List of metrics to run. Runs all if not specified.')
-    parser.add_argument('--language', type=str, choices=['en', 'ch'], default='en', help='Language of the dataset.')
-    parser.add_argument('--timestamp', type=str, default=None, help='Specific timestamp to evaluate. If omitted and --resume is True, the latest outputs will be used; if --resume is False, a new timestamp will be created.')
-    parser.add_argument('--mode', type=str, default=None, help='Mode for method, if applicable.')
-    parser.add_argument('--resume', action=argparse.BooleanOptionalAction, default=False, help='Resume mode: True to evaluate into an existing run (use specified/latest timestamp); False to create a new timestamp and re-evaluate.')
+    parser.add_argument('--language', type=str, choices=['en', 'ch', 'all'], default=None, help='Language to evaluate. None/all => enumerate all available languages.')
+    parser.add_argument('--split', type=str, choices=['full', 'lite'], default='full', help='Dataset split to use.')
+    parser.add_argument('--timestamp', type=str, default=None, help='Specific timestamp to evaluate. If omitted, enumerate all available timestamps for each language/mode.')
+    parser.add_argument('--mode', type=str, default=None, help='Mode for method. None => enumerate all available modes.')
+    parser.add_argument('--resume', action=argparse.BooleanOptionalAction, default=False, help='Only controls result timestamp alignment. True: align result timestamp to output timestamp. False: create a new result timestamp for each combination. Does not affect enumeration.')
 
     args = parser.parse_args()
     
@@ -127,125 +197,158 @@ def main():
     merged_config = merge_config_with_args(config, args)
 
     # --- Main Evaluation Logic ---
-    # Determine run timestamp according to simplified resume semantics:
-    # - if --resume False: always create a new timestamp
-    # - else if --timestamp provided: use it
-    # - else: let manager select the latest automatically
-    mode_val = args.mode or "base"
-    if args.resume is False:
-        timestamp_to_use = ResultManager.create_timestamp()
-    else:
-        timestamp_to_use = args.timestamp if args.timestamp else None
-
     # Use unified config paths for results, preferring CLI overrides without mutating YAML
     _cli = merged_config.get('cli_args', {}) if isinstance(merged_config, dict) else {}
     results_root = _cli.get('result_path') or merged_config.get('core', {}).get('paths', {}).get('results', 'data/bench_results')
-    result_manager = ResultManager(
-        method_name=args.method,
-        mode=mode_val,
-        language=args.language,
-        timestamp=timestamp_to_use,
-        base_path=results_root
-    )
 
+    # Resolve dataset/outputs roots
     _cli = merged_config.get('cli_args', {}) if isinstance(merged_config, dict) else {}
     dataset_root = _cli.get('dataset_path') or merged_config.get('core', {}).get('paths', {}).get('dataset', 'data/dataset')
     outputs_root = _cli.get('outputs_path') or merged_config.get('core', {}).get('paths', {}).get('outputs', 'data/outputs')
-    stories_data = load_dataset(dataset_root, 'ViStory', args.language)
-    stories_outputs = load_outputs(
-        outputs_root=outputs_root,
-        methods=args.method,
-        languages=[args.language],
-        modes=[args.mode] if args.mode else None,
-        return_latest=not args.timestamp,
-        timestamps=[args.timestamp] if args.timestamp else None
-    )
 
+    # Determine metrics
     requested_metrics = args.metrics or list(EVALUATOR_REGISTRY.keys())
 
-    # Handle API key fallback
-    # API key/base_url resolution is delegated to evaluators via BaseEvaluator; no top-level mutation here.
+    # Normalize methods to list
+    methods_list = args.method if isinstance(args.method, (list, tuple)) else [args.method]
 
-    # Add result path from manager
-    merged_config['bench_result_run_dir'] = result_manager.result_path
+    for method_name in methods_list:
+        # Languages to run
+        if args.language in (None, 'all'):
+            langs_to_run = discover_languages(outputs_root, method_name)
+        else:
+            langs_to_run = [args.language]
 
-    # Initialize all evaluators once with the merged config
-    evaluators = {}
-    for metric_name in requested_metrics:
-        if metric_name in EVALUATOR_REGISTRY:
-            evaluators[metric_name] = EVALUATOR_REGISTRY[metric_name](config=merged_config, timestamp=result_manager.timestamp,mode=result_manager.mode,language=result_manager.language)
-
-    for story_id, story_data in stories_data.items():
-        story_id = str(story_id) 
-        if story_id not in stories_outputs:
-            yellow_print(f"Warning: Story '{story_id}' not found in outputs for method '{args.method}'. Skipping.")
+        if not langs_to_run:
+            yellow_print(f"Warning: No languages found under outputs for method '{method_name}'. Skipping.")
             continue
-        
-        blue_print(f"--- Evaluating Story: {story_id} for Method: {args.method} ---")
 
-        for metric_name, evaluator in evaluators.items():
-            if metric_name == 'diversity': continue # Skip method-level evaluators here
+        for lang in langs_to_run:
+            # Load dataset per-language
+            stories_data = load_dataset(dataset_root, 'ViStory', lang, args.split)
 
-            try:
-                green_print(f"Running {metric_name} evaluation...")
-                result = evaluator.evaluate(method=args.method, story_id=story_id)
-                if result:
-                    # Save story-level result (wrapped by ResultManager)
-                    result_manager.save_story_result(metric_name, story_id, result)
+            # Modes to run
+            modes_to_run = discover_modes(outputs_root, method_name, lang) if args.mode is None else [args.mode]
+            if not modes_to_run:
+                yellow_print(f"Warning: No modes found for method '{method_name}', language '{lang}'. Skipping.")
+                continue
 
-                    # Append item-level records when available (delegated to evaluator)
-                    try:
-                        run_info = {
-                            "method": args.method,
-                            "mode": mode_val,
-                            "language": args.language,
-                            "dataset": "ViStory",
-                            "timestamp": result_manager.timestamp,
-                        }
-                        items = []
-                        if hasattr(evaluator, "build_item_records"):
-                            items = evaluator.build_item_records(
-                                method=args.method,
-                                story_id=story_id,
-                                story_result=result,
-                                run_info=run_info,
-                            ) or []
-                        if items:
-                            result_manager.append_items(metric_name, items)
-                    except Exception as _e:
-                        yellow_print(f"Warning: failed to append item-level records for {metric_name}, story {story_id}: {_e}")
+            for mode in modes_to_run:
+                # Timestamps to run
+                if args.timestamp:
+                    timestamps_to_run = [args.timestamp]
+                else:
+                    timestamps_to_run = discover_timestamps(outputs_root, method_name, lang, mode)
 
-                green_print(f"{metric_name} evaluation complete.")
-            except Exception as e:
-                yellow_print(f"Error during {metric_name} evaluation for story {story_id}: {e}")
+                if not timestamps_to_run:
+                    yellow_print(f"Warning: No timestamps found for method '{method_name}', language '{lang}', mode '{mode}'. Skipping.")
+                    continue
 
-    # Handle method-level evaluators like diversity
-    if 'diversity' in evaluators:
-        green_print("Running diversity evaluation for the whole method...")
-        try:
-            diversity_evaluator = evaluators['diversity']
-            result = diversity_evaluator.evaluate(method=args.method)
-            # Save dataset-level metric for diversity
-            ds_record = {
-                "run": {
-                    "method": args.method,
-                    "mode": mode_val,
-                    "language": args.language,
-                    "dataset": "ViStory",
-                    "timestamp": result_manager.timestamp
-                },
-                "metric": {"name": "diversity"},
-                "scope": {"level": "dataset"},
-                "metrics": result
-            }
-            result_manager.save_dataset_metric("diversity", ds_record)
-            green_print("Diversity evaluation complete.")
-        except Exception as e:
-            yellow_print(f"Error during diversity evaluation: {e}")
+                for ts_out in timestamps_to_run:
+                    # Result timestamp policy (Scheme B)
+                    results_ts = ts_out if args.resume else ResultManager.create_timestamp()
 
-    # Finalize and save summary (cross-metric dataset-level)
-    result_manager.compute_and_save_summary()
-    green_print(f"All evaluations for method '{args.method}' complete. Results saved at: {result_manager.result_path}")
+                    blue_print(f"=== Evaluating: method={method_name} language={lang} mode={mode} ts={ts_out} -> result_ts={results_ts} ===")
+
+                    # Initialize ResultManager per combination
+                    result_manager = ResultManager(
+                        method_name=method_name,
+                        mode=mode,
+                        language=lang,
+                        timestamp=results_ts,
+                        base_path=results_root,
+                        outputs_timestamp=ts_out
+                    )
+
+                    # Load outputs for this combination
+                    stories_outputs = load_outputs(
+                        outputs_root=outputs_root,
+                        methods=[method_name],
+                        languages=[lang],
+                        modes=[mode],
+                        return_latest=False,
+                        timestamps=[ts_out]
+                    )
+
+                    # Add result path from manager into config for evaluators
+                    merged_config['bench_result_run_dir'] = result_manager.result_path
+
+                    # Initialize evaluators for this combination
+                    evaluators = {}
+                    for metric_name in requested_metrics:
+                        if metric_name in EVALUATOR_REGISTRY:
+                            evaluators[metric_name] = EVALUATOR_REGISTRY[metric_name](
+                                config=merged_config,
+                                timestamp=result_manager.timestamp,
+                                mode=result_manager.mode,
+                                language=result_manager.language,
+                                outputs_timestamp=ts_out
+                            )
+
+                    # Story-level metrics
+                    for story_id, story_data in stories_data.items():
+                        story_id = str(story_id)
+                        if story_id not in stories_outputs:
+                            yellow_print(f"Warning: Story '{story_id}' not found in outputs for {method_name}/{lang}/{mode}/{ts_out}. Skipping.")
+                            continue
+
+                        blue_print(f"--- Evaluating Story: {story_id} for {method_name}/{lang}/{mode}/{ts_out} ---")
+
+                        for metric_name, evaluator in evaluators.items():
+                            if metric_name == 'diversity':
+                                continue  # Skip method-level evaluators here
+                            finish_data=result_manager.load_metric_result(metric_name, 'story')
+                            if finish_data and story_id in finish_data and finish_data[story_id].get('status', '')=='complete':
+                                green_print(f"Skipping {metric_name} for story {story_id}, already completed.")
+                                continue
+                            try:
+                                green_print(f"Running {metric_name} evaluation...")
+                                result = evaluator.evaluate(method=method_name, story_id=story_id)
+                                if result:
+                                    # Save story-level result (wrapped by ResultManager)
+                                    result_manager.save_story_result(metric_name, story_id, result)
+
+                                    # Append item-level records when available (delegated to evaluator)
+                                    try:
+                                        items = evaluator.build_item_records(
+                                            method=method_name,
+                                            story_id=story_id,
+                                            story_result=result,
+                                        ) 
+                                        result_manager.append_items(metric_name, items)
+                                    except Exception as _e:
+                                        yellow_print(f"Warning: failed to append item-level records for {metric_name}, story {story_id}: {_e}")
+
+                                green_print(f"{metric_name} evaluation complete.")
+                            except Exception as e:
+                                yellow_print(f"Error during {metric_name} evaluation for story {story_id}: {e}")
+
+                    # Handle method-level evaluators like diversity
+                    if 'diversity' in evaluators:
+                        green_print("Running diversity evaluation for this method/mode/language/timestamp combination...")
+                        try:
+                            diversity_evaluator = evaluators['diversity']
+                            result = diversity_evaluator.evaluate(
+                                method=method_name,
+                                mode=mode,
+                                language=lang,
+                                timestamp=ts_out,
+                                stories_outputs=stories_outputs,
+                            )
+                            # Save dataset-level metric for diversity
+                            ds_record = {
+                                "metric": {"name": "diversity"},
+                                "scope": {"level": "dataset"},
+                                "metrics": result
+                            }
+                            result_manager.save_dataset_metric("diversity", ds_record)
+                            green_print("Diversity evaluation complete.")
+                        except Exception as e:
+                            yellow_print(f"Error during diversity evaluation: {e}")
+
+                    # Finalize and save summary (cross-metric dataset-level)
+                    result_manager.compute_and_save_summary()
+                    green_print(f"Evaluation complete for {method_name}/{lang}/{mode}/{results_ts}. Results at: {result_manager.result_path}")
 
 if __name__ == "__main__":
     main()

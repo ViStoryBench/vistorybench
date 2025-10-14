@@ -12,9 +12,9 @@ core:
 evaluators:
   prompt_align:
     gpt:
-      model: gpt-4.1-mini-2025-04-14
+      model: 
       base_url: 
-      api_key:
+      api_key: 
       workers: 16
 
   cids:

@@ -12,7 +12,7 @@ except ImportError:
 
 from vistorybench.bench.base_evaluator import BaseEvaluator
 from .csd.csd_model import CSD_CLIP
-from vistorybench.data_process.outputs_read.read_outputs import load_outputs
+from vistorybench.dataset_loader.read_outputs import load_outputs
 
 def load_csd(w_path):
     csd_image_encoder = CSD_CLIP(only_global_token=True)
@@ -28,8 +28,8 @@ def load_csd(w_path):
     return csd_image_encoder
 
 class CSDEvaluator(BaseEvaluator):
-    def __init__(self, config: dict, timestamp: str, mode: str, language: str):
-        super().__init__(config, timestamp, mode, language)
+    def __init__(self, config: dict, timestamp: str, mode: str, language: str, outputs_timestamp=None):
+        super().__init__(config, timestamp, mode, language, outputs_timestamp)
         self.device = torch.device(self.get_device())
         csd_model_path = os.path.join(self.pretrain_path, 'csd/csd_vit-large.pth')
 
@@ -71,6 +71,10 @@ class CSDEvaluator(BaseEvaluator):
         all_outputs = load_outputs(
             outputs_root=self.output_path,
             methods=[method],
+            modes=[self.mode],
+            languages=[self.language],
+            timestamps=[self.outputs_timestamp],
+            return_latest=False
         )
         story_outputs = all_outputs.get(story_id)
         
@@ -98,7 +102,7 @@ class CSDEvaluator(BaseEvaluator):
         print(f"CSD evaluation complete for story: {story_id}")
         return result
 
-    def build_item_records(self, method: str, story_id: str, story_result, run_info: dict):
+    def build_item_records(self, method: str, story_id: str, story_result):
         items = []
         try:
             if isinstance(story_result, dict):
@@ -108,7 +112,6 @@ class CSDEvaluator(BaseEvaluator):
                         shot_idx = sd.get("index")
                         score = sd.get("score")
                         item = {
-                            "run": run_info,
                             "metric": {"name": "csd", "submetric": "cross_csd"},
                             "scope": {"level": "item", "story_id": str(story_id), "shot_index": shot_idx},
                             "value": score,

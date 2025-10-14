@@ -199,7 +199,7 @@ for j in range(len(story_name_list)):
     # save_folder = '{}/val_{}'.format(save_dir, j)
     story_name = story_name_list[j]
 
-    LITE_DATA = ['08', '09', '15', '17', '19', '24', '27', '28', '29', '32', '41', '52', '53', '55', '57', '60', '64', '68', '79']
+    LITE_DATA = ['01','08', '09', '15', '17', '19', '24', '27', '28', '29', '32', '41', '52', '53', '55', '57', '60', '64', '68', '79']
 
     if story_name not in LITE_DATA:
         continue

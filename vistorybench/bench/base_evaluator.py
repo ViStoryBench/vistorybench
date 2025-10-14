@@ -1,4 +1,4 @@
-from vistorybench.data_process.dataset_process.dataset_load import StoryDataset
+from vistorybench.dataset_loader.dataset_load import StoryDataset
 import os
 from abc import ABC, abstractmethod
 
@@ -7,9 +7,13 @@ class BaseEvaluator(ABC):
     """
     Abstract base class for all evaluators.
     """
-    def __init__(self, config, timestamp, mode, language):
+    def __init__(self, config, timestamp, mode, language, outputs_timestamp=None):
         self.config = config
+        # Result timestamp (where evaluation outputs are written)
         self.timestamp = timestamp
+        self.result_timestamp = timestamp
+        # Outputs timestamp (which generation run to read images from)
+        self.outputs_timestamp = outputs_timestamp
         self.mode = mode
         self.language = language
 
@@ -72,7 +76,7 @@ class BaseEvaluator(ABC):
         """
         pass
 
-    def build_item_records(self, method: str, story_id: str, story_result, run_info: dict):
+    def build_item_records(self, method: str, story_id: str, story_result):
         """
         Construct item-level records (JSONL entries) for this evaluator based on the story_result.
         Default implementation returns an empty list; subclasses may override.
@@ -80,7 +84,6 @@ class BaseEvaluator(ABC):
         :param method: The method name.
         :param story_id: The story id.
         :param story_result: The result returned by evaluate(...)
-        :param run_info: Common run information to be embedded into each item
         :return: List of item dicts to append via ResultManager.append_items(...)
         """
         return []

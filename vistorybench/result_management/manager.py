@@ -43,6 +43,7 @@ class ResultManager:
         dataset_name: str = "ViStory",
         timestamp: Optional[str] = None,
         base_path: str = "data/bench_results",
+        outputs_timestamp: Optional[str] = None,
     ):
         """
         Initialize a ResultManager instance.
@@ -60,6 +61,7 @@ class ResultManager:
         self.language = language or "en"
         self.dataset_name = dataset_name
         self.base_path = base_path
+        self.outputs_timestamp = outputs_timestamp
 
         # Resolve timestamp
         if timestamp:
@@ -137,6 +139,7 @@ class ResultManager:
                 "language": self.language,
                 "dataset_name": self.dataset_name,
                 "timestamp": self.timestamp,
+                "outputs_timestamp": self.outputs_timestamp,
             }
         }
         with open(meta_path, "w", encoding="utf-8") as f:
@@ -167,47 +170,6 @@ class ResultManager:
         metric_map = metrics_map.setdefault(metric_name, {})
         metric_map[str(story_id)] = record
         self.save_manifest(manifest)
-
-    def has_story_result(
-        self,
-        metric_name: str,
-        story_id: str,
-        expected_version: Optional[str] = None,
-        outputs_hash: Optional[str] = None,
-        resume_policy: str = "verify",
-    ) -> bool:
-        """
-        Decide whether to skip re-evaluation for a given metric×story.
-
-        Policies:
-          - verify (default): skip only if status==complete AND (expected_version is None or matches) AND (outputs_hash matches if provided)
-          - skip: skip if status==complete (ignores version/hash)
-          - overwrite: never skip
-        """
-        if resume_policy == "overwrite":
-            return False
-
-        manifest = self.load_manifest()
-        metric_map = manifest.get("metrics", {}).get(metric_name, {})
-        rec = metric_map.get(str(story_id))
-        if not rec:
-            return False
-
-        status = rec.get("status")
-        if status != "complete":
-            return False
-
-        if resume_policy == "skip":
-            return True
-
-        # verify
-        if expected_version is not None:
-            if rec.get("version") != expected_version:
-                return False
-        if outputs_hash is not None:
-            if rec.get("outputs_hash") != outputs_hash:
-                return False
-        return True
 
     # ----------------------------
     # IO utils

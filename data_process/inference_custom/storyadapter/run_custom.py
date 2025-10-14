@@ -11,7 +11,7 @@ import argparse
 code_path = args.code_path 
 '''Please modify it by yourself.'''
 
-prompt_weighted_path = f'{code_path}/data_process/dataset_process'
+prompt_weighted_path = f'{code_path}/dataset_loader'
 import sys
 sys.path.append(prompt_weighted_path)
 from prompt_weighted import prompt_weighted_encode

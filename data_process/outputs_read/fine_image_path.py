@@ -157,14 +157,14 @@ def find_all_image_paths_for_business(method, base_path, image_extensions):
         group_dir = os.path.join(base_path, group_id)
         
         # Find subdirectories that may contain shots or character images.
-        # Some projects name these folders in English ('shot(s)', 'chars') or Chinese ('分镜', '角色').
+        # Some projects name these folders as 'shot(s)' or 'chars'.
         shot_dir = None
         char_dir = None
         for d in os.listdir(group_dir):
             dir_path = os.path.join(group_dir, d)
-            if os.path.isdir(dir_path) and d.endswith('分镜'):
+            if os.path.isdir(dir_path) and (d.lower() in {'shots', 'shot'} or d.endswith('shot') or d.endswith('shots')):
                 shot_dir = dir_path
-            elif os.path.isdir(dir_path) and d.endswith('角色'):
+            elif os.path.isdir(dir_path) and (d.lower() in {'chars', 'characters'} or d.endswith('character') or d.endswith('characters')):
                 char_dir = dir_path
             # if os.path.isdir(dir_path) and d.endswith('20250500_000000'):
             #     shot_dir = dir_path

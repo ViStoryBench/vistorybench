@@ -111,14 +111,14 @@ Use our standardized loading script
 `dataset_load.py` or your own data loader.
 Run this command to verify successful dataset loading:
 ```bash
-pyhton vistorybench/data_process/dataset_process/dataset_load.py
+pyhton vistorybench/dataset_loader/dataset_load.py
 ```
 
 ### 2.2. Dataset Adapting 
 
 > Aligning the dataset format with the specified method's input requirements.
 
-Pre-built dataset conversion scripts are available for several pre-defined methods, all located in `vistorybench/data_process/dataset_process`. `adapt_base.py` is a template script for dataset conversion. All pre-built dataset conversion scripts are created based on this template.
+Pre-built dataset conversion scripts are available for several pre-defined methods, all located in `vistorybench/dataset_loader`. `adapt_base.py` is a template script for dataset conversion. All pre-built dataset conversion scripts are created based on this template.
 - `adapt_base.py`
 - `adapt2animdirector.py`
 - `adapt2seedstory.py`,
@@ -130,7 +130,7 @@ Pre-built dataset conversion scripts are available for several pre-defined metho
 
 **Example of UNO:**
 ```bash
-python vistorybench/data_process/dataset_process/adapt2uno.py \
+python vistorybench/dataset_loader/adapt2uno.py \
 --language 'en' # choice=['en','ch']
 ```
 
@@ -216,7 +216,7 @@ data/outputs/
 
 ### 3.2 Automated Reading
 When you run the evaluation code, it will automatically perform data reading (ensure both the ViStoryBench dataset and the generated results conform to the standard directory structure specified above). The generated-results reading code has been uniformly integrated into the following file:
-`vistorybench/data_process/outputs_read/read_outputs.py`
+`vistorybench/dataset_loader/read_outputs.py`
 
 
 ## <span style="color: orange">4. Evaluation & Analysis</span> 😺
@@ -227,6 +227,7 @@ We provide an automated pretrain-weight download script that allows you to downl
 ```bash
 sudo apt update
 sudo apt install aria2
+snap install yq
 sh download_weights.sh
 ```
 * All of them will be saved in `data/pretrain`.

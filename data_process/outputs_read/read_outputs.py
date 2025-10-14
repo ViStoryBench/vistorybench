@@ -53,17 +53,17 @@ def _collect_story_images(story_dir: str,
     char_paths: List[str] = []
 
     for td in target_dirs:
-        # Special names for shots / chars can appear — try to detect both English and Chinese folder names.
-        # For example some projects use Chinese directory names '分镜' (shots) and '角色' (chars).
+        # Special names for shot/character folders can appear — detect both English and Chinese names.
+        # For example: folder names like 'shots' and 'characters'.
         sub_items = os.listdir(td)
 
         # candidate dedicated subfolders
         shot_sub = None
         char_sub = None
         for s in sub_items:
-            if s.endswith('分镜') or s.lower() in {'shots', 'shot'}:
+            if s.lower() in {'shots', 'shot'} or s.endswith('shot') or s.endswith('shots'):
                 shot_sub = os.path.join(td, s)
-            elif s.endswith('角色') or s.lower() in {'chars', 'characters'}:
+            elif s.lower() in {'chars', 'characters'} or s.endswith('character') or s.endswith('characters'):
                 char_sub = os.path.join(td, s)
 
         # fallback: use td itself

@@ -5,10 +5,10 @@ from torchvision import transforms
 from typing import Any
 
 from vistorybench.bench.base_evaluator import BaseEvaluator
-from vistorybench.data_process.outputs_read.read_outputs import load_outputs
+from vistorybench.dataset_loader.read_outputs import load_outputs
 class AestheticEvaluator(BaseEvaluator):
-    def __init__(self, config: dict, timestamp: str, mode: str, language: str):
-        super().__init__(config, timestamp, mode, language)
+    def __init__(self, config: dict, timestamp: str, mode: str, language: str, outputs_timestamp=None):
+        super().__init__(config, timestamp, mode, language, outputs_timestamp)
         self.device = torch.device(self.get_device())
 
         VGO_HUB_ROOT = "vistorybench/bench/quality/aesthetic"
@@ -54,6 +54,10 @@ class AestheticEvaluator(BaseEvaluator):
         all_outputs = load_outputs(
             outputs_root=self.output_path,
             methods=[method],
+            modes=[self.mode],
+            languages=[self.language],
+            timestamps=[self.outputs_timestamp],
+            return_latest=False
         )
         story_outputs = all_outputs.get(story_id)
         
@@ -82,7 +86,7 @@ class AestheticEvaluator(BaseEvaluator):
         print(f"Aesthetic evaluation complete for story: {story_id}. Average score: {average_score:.4f}")
         return {"metrics": {"aesthetic_score": average_score}, "per_image_scores": per_image_scores}
 
-    def build_item_records(self, method: str, story_id: str, story_result, run_info: dict):
+    def build_item_records(self, method: str, story_id: str, story_result):
         items = []
         try:
             if isinstance(story_result, dict):
@@ -90,7 +94,6 @@ class AestheticEvaluator(BaseEvaluator):
                 if isinstance(per_scores, list):
                     for idx, score in enumerate(per_scores):
                         item = {
-                            "run": run_info,
                             "metric": {"name": "aesthetic", "submetric": "aesthetic_score"},
                             "scope": {"level": "item", "story_id": str(story_id), "shot_index": idx},
                             "value": score,

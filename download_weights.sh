@@ -1,20 +1,14 @@
 #!/bin/bash
 export HF_ENDPOINT=https://hf-mirror.com
-# Function to read YAML file
-get_yaml_value() {
-    local yaml_file=$1
-    local key=$2
-    grep "^${key}:" "$yaml_file" | awk '{print $2}' | sed 's/"//g'
-}
 
 # Get pretrain directory from config
-CONFIG_FILE="vistorybench/config.yaml"
-PRETRAIN_DIR=$(get_yaml_value "$CONFIG_FILE" "pretrain_path")
-if [ -z "$PRETRAIN_DIR" ]; then
-    echo "Error: pretrain_path not found in config.yaml"
+CONFIG_FILE="config.yaml"
+PRETRAIN_DIR=$(yq '.core.paths.pretrain' "$CONFIG_FILE")
+
+if [ $? -ne 0 ] || [ -z "$PRETRAIN_DIR" ] || [ "$PRETRAIN_DIR" == "null" ]; then
+    echo "Error: .core.paths.pretrain not found in config.yaml" >&2
     exit 1
 fi
-
 echo "Using pretrain directory: $PRETRAIN_DIR"
 
 # Create necessary directories

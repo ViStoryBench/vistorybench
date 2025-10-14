@@ -200,7 +200,6 @@ def process_directory(root_dir, device): # Pass device
             "aggregate_scores": {
                 "generated_diversity": {
                     "inception_score": is_mean, # Aggregate score uses IS mean
-                    "inception_score_std": is_std # Include standard deviation
                 }
                 # Can add other aggregate metrics here
             }
@@ -268,7 +267,6 @@ def inception_score_for_folder(image_dir, data_path, method,
         "aggregate_scores": {
             "generated_diversity": {
                 "inception_score": is_mean,
-                "inception_score_std": is_std
             }
         },
         "elapsed_time(seconds)": elapsed_time

@@ -17,12 +17,14 @@ from transformers import CLIPProcessor, CLIPModel
 from pathlib import Path
 
 from vistorybench.bench.base_evaluator import BaseEvaluator
-from vistorybench.data_process.outputs_read.read_outputs import load_outputs
+from vistorybench.dataset_loader.read_outputs import load_outputs
 
-# Add AdaFace to path
+# Dynamically add AdaFace submodule to Python path to resolve imports
+# within the submodule, as it's not a standard package.
 adaface_path = os.path.join(os.path.dirname(__file__), 'AdaFace')
 if adaface_path not in sys.path:
-    sys.path.insert(0, adaface_path)
+    sys.path.append(adaface_path)
+
 from .AdaFace.inference import load_pretrained_model, to_input, adaface_models
 
 class MultiModelFeatures:
@@ -96,8 +98,8 @@ class MultiModelFeatures:
         return None
 
 class CIDSEvaluator(BaseEvaluator):
-    def __init__(self, config: dict, timestamp: str, mode: str, language: str):
-        super().__init__(config, timestamp, mode, language)
+    def __init__(self, config: dict, timestamp: str, mode: str, language: str, outputs_timestamp=None):
+        super().__init__(config, timestamp, mode, language, outputs_timestamp)
 
         # Device
         self.device = torch.device(self.get_device())
@@ -131,6 +133,17 @@ class CIDSEvaluator(BaseEvaluator):
 
         # Cosine similarity function
         self.cos = F.cosine_similarity
+
+        # Prompt Align GPT-V config for single_character_action integration
+        pa_cfg = self.get_evaluator_config('prompt_align')
+        gpt_cfg = pa_cfg.get('gpt', {}) if isinstance(pa_cfg, dict) else {}
+        model = self.get_cli_arg('model_id') or gpt_cfg.get('model') or 'gpt-4o'
+        base_url = gpt_cfg.get('base_url') or self.get_base_url()
+        api_key = gpt_cfg.get('api_key') or self.get_api_key()
+        self.gpt_api_pkg = (model, api_key, base_url)
+        self.gpt_workers = int(gpt_cfg.get('workers', 1) or 1)
+        self._pa_skip_warned = False
+        self._pa_prompt_path = 'vistorybench/bench/prompt_align/user_prompts/user_prompt_single_character_text_align.txt'
 
         # Load models on initialization
         self._load_models(self.pretrain_path, self.device)
@@ -539,19 +552,24 @@ class CIDSEvaluator(BaseEvaluator):
     def evaluate(self, method: str, story_id: str, **kwargs):
 
         # Create a directory for intermediate results (aligned to unified result schema)
-        run_dir = os.path.join(self.result_path, method, self.mode,self.language,self.timestamp)
+        run_dir = os.path.join(self.result_path, method, self.mode, self.language, self.timestamp)
         self.mid_result_dir = os.path.join(run_dir, 'metrics', 'cids', 'mid_results', story_id)
         os.makedirs(self.mid_result_dir, exist_ok=True)
 
+        # GPT-V utils import (local) for single_character_action scoring
+        from vistorybench.bench.prompt_align.gptv_utils import gptv_query, load_img_content
         story_data = self.story_dataset.load_story(story_id)
         shots = story_data['shots']
         Characters = story_data['characters']
-        
+
         all_outputs = load_outputs(
             outputs_root=self.output_path,
             methods=[method],
+            modes=[self.mode],
+            languages=[self.language],
+            timestamps=[self.outputs_timestamp],
+            return_latest=False
         )
-        
         story_outputs = all_outputs.get(story_id)
         if not story_outputs:
             print(f"Warning: No outputs found for story {story_id}, method {method}")
@@ -563,8 +581,9 @@ class CIDSEvaluator(BaseEvaluator):
 
         if self.ref_mode == 'mid-gen':
             MID_GEN_REF_PATH = {char: None for char in CHARACTER}
-            MID_GEN_CHAR_LIST = story_outputs['chars']
+            MID_GEN_CHAR_LIST = story_outputs.get('chars', [])
 
+        # Load references
         ref_clip_feats = {}
         for char in CHARACTER:
             enc_name = self._get_encoder_name(Characters[char]["tag"])
@@ -574,6 +593,7 @@ class CIDSEvaluator(BaseEvaluator):
             if self.ref_mode == 'origin':
                 ref_imgs = sorted(glob.glob(os.path.join(REF_PATH[char], '**/*.jpg'), recursive=True))
             elif self.ref_mode == 'mid-gen':
+                ref_imgs = []
                 for img_path in MID_GEN_CHAR_LIST:
                     char_file_name = os.path.basename(img_path).split(".")[0]
                     if char_file_name in MID_GEN_REF_PATH.keys() and char == char_file_name:
@@ -584,8 +604,8 @@ class CIDSEvaluator(BaseEvaluator):
                         break
                 if MID_GEN_REF_PATH[char] is None:
                     print(f'[WARN] Missing character: {char}, Assign an empty value [] (available character: {CHARACTER})')
-                    continue
-                ref_imgs = sorted(glob.glob(MID_GEN_REF_PATH[char], recursive=True))
+                else:
+                    ref_imgs = sorted(glob.glob(MID_GEN_REF_PATH[char], recursive=True))
 
             for img in ref_imgs:
                 boxes, logits, _, _ = self.dino_detect(img, TEXT_PROMPT[char])
@@ -613,52 +633,71 @@ class CIDSEvaluator(BaseEvaluator):
                     ref_feats = self.get_char_feat(input_ref_imgs, encoder_name=enc_name)
                 else:
                     ref_feats = None
-            
+
             assert ref_feats is not None, f"Cant get ref char: {char}, please check. No valid reference images found."
             ref_clip_feats[char] = ref_feats
 
         results = {"cids": {}}
         char_pil_imgs = {}
-        matched_cnt = 0
-        omissive_cnt = 0
-        superfluous_cnt = 0
+        occm_scores = []
+        new_shot_indices = []
+
+        # Single-character action alignment (per-shot, per-character)
+        pa_detailed_scores = {}
+        pa_story_scores = []
+        model_type, api_key, base_url = self.gpt_api_pkg if hasattr(self, 'gpt_api_pkg') else (None, '', '')
+        pa_available = bool(api_key) and bool(base_url)
+        if not pa_available and not getattr(self, '_pa_skip_warned', False):
+            print("\033[33mWarning: single_character_action skipped: missing GPT-V base_url or api_key in config.\033[0m")
+            self._pa_skip_warned = True
+        single_prompt_text = None
+        if pa_available:
+            try:
+                with open(self._pa_prompt_path, 'r') as _pf:
+                    single_prompt_text = _pf.read()
+            except Exception as _e:
+                print(f"\033[33mWarning: failed to read single_character_action prompt file: {_e}\033[0m")
+                pa_available = False
+
 
         for shot in shots:
             shot_results = {}
+            pa_char_scores = {}
             shot_id = int(shot["index"]) - 1
-            
+
             if shot_id >= len(story_outputs['shots']):
                 print(f"Warning: shot_id {shot_id} is out of bounds. Skipping...")
                 continue
-            
+
             target_img_path = story_outputs['shots'][shot_id]
 
             if not os.path.exists(target_img_path):
                 print(f"\033[31mError: Image file not found: {target_img_path}. Skipping shot {shot_id}.\033[0m")
                 for char in shot['character_key']:
-                    shot_results.update({ char: { "box": "null", "cross_sim": 0.0 } })
-                omissive_cnt += 1
+                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                E = len(shot['character_key']); D = 0; epsilon = 1e-6
+                occm_scores.append(100 * np.exp(-float(abs(D - E)) / (epsilon + E)))
                 results.update({f"shot-{shot_id}": shot_results})
                 continue
 
-            is_omissive_shot = False
+            # Fresh computation for new shot
             for char in shot['character_key']:
                 enc_name = self._get_encoder_name(Characters[char]["tag"])
-                if char not in char_pil_imgs.keys():
-                    char_pil_imgs.update({char: []})
+                if char not in char_pil_imgs:
+                    char_pil_imgs[char] = []
                 boxes, logits, phrases, annotated_frame = self.dino_detect(target_img_path, TEXT_PROMPT[char])
-                
+
                 if len(logits) == 0:
-                    shot_results.update({ char: { "box": "null", "cross_sim": 0.0 } })
+                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
                     continue
-                
+
                 _, indices = torch.topk(logits, min(len(logits), len(shot['character_key'])))
                 boxes = boxes[indices]
                 cropped_imgs = self.crop_img(target_img_path, boxes)
                 if len(cropped_imgs) != 0:
                     output_feats = self.get_char_feat(cropped_imgs, encoder_name=enc_name)
                     if output_feats is None:
-                        shot_results.update({ char: { "box": "null", "cross_sim": 0.0 } })
+                        shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
                         continue
 
                     cosine_sims = {}
@@ -677,10 +716,10 @@ class CIDSEvaluator(BaseEvaluator):
                     available_indices = list(range(len(sims_bak)))
                     matched_flag = False
 
-                    while(len(sims_bak) > 0):
+                    while len(sims_bak) > 0:
                         local_id = torch.argmax(torch.Tensor(sims_bak)).item()
                         original_id = available_indices[local_id]
-                        
+
                         conflict_found = False
                         for _char in shot['character_key']:
                             if _char != char:
@@ -689,12 +728,12 @@ class CIDSEvaluator(BaseEvaluator):
                                     cosine_sims[_char][original_id] > cosine_sims[char][original_id]):
                                     conflict_found = True
                                     break
-                        
+
                         if not conflict_found:
                             matched_flag = True
                             boxes_id = original_id
                             break
-                        
+
                         sims_bak.pop(local_id)
                         available_indices.pop(local_id)
 
@@ -711,62 +750,86 @@ class CIDSEvaluator(BaseEvaluator):
                         except Exception as e:
                             print(f"\033[33mWarning: Failed to compute cross_sim for {char} in shot {shot_id}: {str(e)}\033[0m")
                             shot_cross_sim = 0.0
-                        
-                        shot_results.update({ char: { "box": boxes_to_write, "cross_sim": shot_cross_sim }})
+
+                        shot_results.update({char: {"box": boxes_to_write, "cross_sim": shot_cross_sim}})
                         char_pil_imgs[char].append(cropped_imgs[boxes_id])
                         cropped_imgs[boxes_id].save(f"{self.mid_result_dir}/shot{shot_id:02d}-{char}.png")
+
+                        # Single-character action alignment via GPT-V (only for matched characters)
+                        if pa_available and single_prompt_text:
+                            try:
+                                # Fallback to closest action/script field
+                                prompt_text = shot.get('script') or shot.get('character_action') or shot.get('action') or shot.get('description') or ''
+                                # Compose user content
+                                user_content = [
+                                    {"type": "text", "text": prompt_text},
+                                    {"type": "text", "text": f"Evaluated Character Name is {Characters[char]['name']}"},
+                                    load_img_content(cropped_imgs[boxes_id], image_mode='pil')
+                                ]
+                                transcript = [{"role":"system","content":[{"type": "text", "text": single_prompt_text}]},{"role": "user", "content": user_content}]
+                                # Local retry with temperature escalation
+                                import re
+                                max_retry = 10
+                                temp_start = 0.0
+                                score_val = 0
+                                while max_retry > 0:
+                                    try:
+                                        response = gptv_query(
+                                            transcript,
+                                            top_p=0.2,
+                                            temp=temp_start,
+                                            model_type=model_type,
+                                            api_key=api_key,
+                                            base_url=base_url,
+                                        )
+                                        pattern = r"(score|Score):\s*[a-zA-Z]*\s*(\d+)"
+                                        matches = re.findall(pattern, response)
+                                        if matches:
+                                            score_val = int(matches[0][1])
+                                            break
+                                        else:
+                                            temp_start += 0.1
+                                            max_retry -= 1
+                                    except Exception as e:
+                                        print(f"\033[33mWarning: single_character_action scoring failed for story {story_id}, shot {shot_id}, char {char}: {e}\033[0m")
+                                        temp_start += 0.1
+                                        max_retry -= 1
+                                # Record character-level score using real character name
+                                pa_char_scores[Characters[char]['name']] = int(score_val)
+                            except Exception as _e:
+                                print(f"\033[33mWarning: single_character_action internal error for story {story_id}, shot {shot_id}, char {char}: {_e}\033[0m")
                     else:
-                        shot_results.update({ char: { "box": "null", "cross_sim": 0.0 } })
+                        shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+
                 else:
-                    shot_results.update({ char: { "box": "null", "cross_sim": 0.0 } })
-                    
-            if any([x["box"] == "null" for x in shot_results.values()]):
-                omissive_cnt += 1
-                is_omissive_shot = True
+                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
 
-            is_superfluous_shot = False
-            if len(shot['character_key']) == 0:
-                for char in CHARACTER:
-                    enc_name = self._get_encoder_name(Characters[char]["tag"])
-                    boxes, logits, phrases, annotated_frame = self.dino_detect(target_img_path, TEXT_PROMPT[char])
+            # OCCM for new shot
+            E = len(shot['character_key'])
+            try:
+                D = sum(1 for _ch in shot['character_key']
+                        if isinstance(shot_results.get(_ch, {}), dict) and shot_results[_ch].get("box") != "null")
+            except Exception:
+                D = 0
+            epsilon = 1e-6
+            occm_scores.append(100 * np.exp(-float(abs(D - E)) / (epsilon + E)))
 
-                    if len(logits) == 0:
-                        continue
-                    
-                    k = min(len(logits), self.topk_per_nochar)
-                    if k > 0:
-                        _, indices = torch.topk(logits, k)
-                        boxes = boxes[indices]
-                    else:
-                        continue
-
-                    cropped_imgs = self.crop_img(target_img_path, boxes)
-                    if len(cropped_imgs) != 0:
-                        output_feats = self.get_char_feat(cropped_imgs, encoder_name=enc_name)
-                        if output_feats is not None:
-                            similarity_matrix = self._compute_multimodel_similarity_matrix(
-                                output_feats,
-                                ref_clip_feats[char],
-                                method=self.ensemble_method
-                            )
-                            if similarity_matrix.max().item() > self.superfluous_threshold:
-                                is_superfluous_shot = True
-                                break
-                if is_superfluous_shot:
-                    superfluous_cnt += 1
-
-            if not is_omissive_shot and not is_superfluous_shot:
-                matched_cnt += 1
+            # Aggregate single_character_action for this shot
+            if pa_available:
+                if pa_char_scores:
+                    shot_pa_mean = int(round(sum(pa_char_scores.values()) / len(pa_char_scores)))
+                else:
+                    shot_pa_mean = 0
+                pa_detailed_scores[shot_id] = {
+                    "single_character_action": shot_pa_mean,
+                    "single_character_action_char": pa_char_scores.copy()
+                }
+                pa_story_scores.append(shot_pa_mean)
 
             results.update({f"shot-{shot_id}": shot_results})
+            new_shot_indices.append(shot_id)
 
-        num_shots = len(shots)
-        results.update({
-            "matched-shots": f"{matched_cnt} / {num_shots}",
-            "omissive-shots": f"{omissive_cnt} / {num_shots}",
-            "superfluous-shots": f"{superfluous_cnt} / {num_shots}",
-        })
-
+        # Aggregate per-character and story metrics using char_pil_imgs (from processed + new)
         copy_paste_cnt = 0
         shot_copy_paste_score = 0.0
         for char in CHARACTER:
@@ -776,10 +839,10 @@ class CIDSEvaluator(BaseEvaluator):
                 if char_feats is None:
                     results["cids"].update({char: {"cross": 0.0, "self": 0.0}})
                     continue
-                
+
                 cross_similarity_matrix = self._compute_multimodel_similarity_matrix(char_feats, ref_clip_feats[char], method=self.ensemble_method)
                 cross_sim = cross_similarity_matrix.mean().item()
-                
+
                 self_similarity_matrix = self._compute_multimodel_similarity_matrix(char_feats, char_feats, method=self.ensemble_method)
                 if self_similarity_matrix.shape[0] > 1:
                     indices = torch.triu_indices(self_similarity_matrix.shape[0], self_similarity_matrix.shape[1], offset=1)
@@ -787,7 +850,7 @@ class CIDSEvaluator(BaseEvaluator):
                 else:
                     self_sim = 1.0
                 results["cids"].update({char: {"cross": round(cross_sim, 4), "self": round(self_sim, 4)}})
-                
+
                 ref_count = len(ref_clip_feats[char]) if isinstance(ref_clip_feats[char], list) else ref_clip_feats[char].shape[0]
                 if ref_count > 1:
                     copy_paste_cnt += 1
@@ -799,14 +862,13 @@ class CIDSEvaluator(BaseEvaluator):
                         copy_paste_cnt -= 1
             else:
                 results["cids"].update({char: {"cross": 0.0, "self": 0.0}})
-        
+
         if copy_paste_cnt > 0:
             shot_copy_paste_score /= copy_paste_cnt
             results.update({"copy-paste-score": shot_copy_paste_score})
         else:
             results.update({"copy-paste-score": "null"})
-        
-        # Compose story-level metrics for unified schema
+
         try:
             cids_map = results.get("cids", {}) if isinstance(results, dict) else {}
             self_vals = []
@@ -821,9 +883,7 @@ class CIDSEvaluator(BaseEvaluator):
                         cross_vals.append(float(cv))
             cids_self_mean = round(sum(self_vals) / len(self_vals), 4) if self_vals else 0.0
             cids_cross_mean = round(sum(cross_vals) / len(cross_vals), 4) if cross_vals else 0.0
-            matched_ratio = round(matched_cnt / num_shots, 4) if num_shots else 0.0
-            omissive_ratio = round(omissive_cnt / num_shots, 4) if num_shots else 0.0
-            superfluous_ratio = round(superfluous_cnt / num_shots, 4) if num_shots else 0.0
+            occm_mean = round(sum(occm_scores) / len(occm_scores), 4) if occm_scores else 0.0
             cp = results.get("copy-paste-score", None)
             copy_paste_score = None if cp == "null" else float(cp) if isinstance(cp, (int, float)) else None
 
@@ -831,20 +891,25 @@ class CIDSEvaluator(BaseEvaluator):
                 "cids_self_mean": cids_self_mean,
                 "cids_cross_mean": cids_cross_mean,
                 "copy_paste_score": copy_paste_score if copy_paste_score is not None else 0.0,
-                "matched_ratio": matched_ratio,
-                "omissive_ratio": omissive_ratio,
-                "superfluous_ratio": superfluous_ratio
+                "occm": occm_mean
             }
+            if pa_available and pa_story_scores:
+                results["metrics"]["single_character_action"] = int(round(sum(pa_story_scores) / len(pa_story_scores)))
         except Exception as _e:
             print(f"\033[33mWarning: failed to compute CIDS story metrics for {story_id}: {_e}\033[0m")
 
+        if pa_available:
+            results["detailed_scores"] = pa_detailed_scores
+        results["new_shot_indices"] = new_shot_indices
         print(f"CIDS evaluation complete for story: {story_id}")
         return results
 
-    def build_item_records(self, method: str, story_id: str, story_result, run_info: dict):
+    def build_item_records(self, method: str, story_id: str, story_result):
         items = []
         try:
             if isinstance(story_result, dict):
+                new_only = set(story_result.get("new_shot_indices") or [])
+                # Existing CIDS item records
                 for k, shot_res in story_result.items():
                     if not isinstance(k, str) or not k.startswith("shot-"):
                         continue
@@ -852,14 +917,17 @@ class CIDSEvaluator(BaseEvaluator):
                         shot_idx = int(k.split("-")[1])
                     except Exception:
                         shot_idx = k
+                    if new_only and shot_idx not in new_only:
+                        continue
                     if isinstance(shot_res, dict):
                         for char_key, v in shot_res.items():
                             if not isinstance(v, dict):
                                 continue
                             cross_val = v.get("cross_sim", 0.0)
                             box = v.get("box", None)
+                            if cross_val is None:
+                                continue
                             item = {
-                                "run": run_info,
                                 "metric": {"name": "cids", "submetric": "cross_sim"},
                                 "scope": {"level": "item", "story_id": str(story_id), "shot_index": shot_idx, "character_key": char_key},
                                 "value": cross_val,
@@ -868,6 +936,20 @@ class CIDSEvaluator(BaseEvaluator):
                                 "status": "complete",
                             }
                             items.append(item)
+                # New PromptAlign single_character_action item records per character (if available)
+                detailed = story_result.get("detailed_scores")
+                if isinstance(detailed, dict):
+                    for shot_idx, dims in detailed.items():
+                        char_map = (dims or {}).get("single_character_action_char")
+                        if isinstance(char_map, dict):
+                            for char_name, score in char_map.items():
+                                item = {
+                                    "metric": {"name": "prompt_align", "submetric": "single_character_action"},
+                                    "scope": {"level": "item", "story_id": str(story_id), "shot_index": shot_idx, "character_name": char_name},
+                                    "value": score,
+                                    "status": "complete",
+                                }
+                                items.append(item)
         except Exception as _e:
             print(f"\033[33mWarning: build_item_records failed for CIDS story {story_id}: {_e}\033[0m")
         return items
