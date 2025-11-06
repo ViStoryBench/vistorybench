@@ -22,3 +22,4 @@ opencv-python-headless==4.9.0.80
 huggingface-hub==0.34.4
 gdown==5.2.0
 
+dotenv

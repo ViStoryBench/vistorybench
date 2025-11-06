@@ -15,7 +15,9 @@ from vistorybench.bench.style.csd_evaluator import CSDEvaluator
 from vistorybench.bench.diversity.diversity_evaluator import DiversityEvaluator
 from vistorybench.bench.quality.aesthetic_evaluator import AestheticEvaluator
 from vistorybench.bench.prompt_align.prompt_align_evaluator import PromptAlignEvaluator
+from dotenv import load_dotenv
 
+load_dotenv()
 
 
 # Evaluator registry
@@ -88,6 +90,13 @@ def merge_config_with_args(config, args):
         'timestamp': getattr(args, 'timestamp', None),
         'mode': getattr(args, 'mode', None),
         'resume': getattr(args, 'resume', None),
+        # Fast CIDS CLI overrides: only set when explicitly provided to avoid overriding YAML defaults
+        'fast_cids': True if '--fast_cids' in sys.argv else None,
+        'cids_batch_size': getattr(args, 'cids_batch_size', None) if '--cids_batch_size' in sys.argv else None,
+        'cids_block_size': getattr(args, 'cids_block_size', None) if '--cids_block_size' in sys.argv else None,
+        'cids_fast_only_copypaste': True if '--cids_fast_only_copypaste' in sys.argv else None,
+        'cids_fast_parallel_shots': getattr(args, 'cids_fast_parallel_shots', None) if '--cids_fast_parallel_shots' in sys.argv else None,
+        'cids_fast_num_workers': getattr(args, 'cids_fast_num_workers', None) if '--cids_fast_num_workers' in sys.argv else None,
     }
 
     return merged_config
@@ -178,9 +187,9 @@ def main():
     parser.add_argument('--outputs_path', type=str, default=(config.get('core', {}).get('paths', {}).get('outputs', 'data/outputs')))
     parser.add_argument('--pretrain_path', type=str, default=(config.get('core', {}).get('paths', {}).get('pretrain', 'data/pretrain')))
     parser.add_argument('--result_path', type=str, default=(config.get('core', {}).get('paths', {}).get('results', 'data/bench_results')))
-    parser.add_argument('--api_key', type=str, default=None, help='API key for external services')
-    parser.add_argument('--base_url', type=str, default=None, help='Base URL for API services')
-    parser.add_argument('--model_id', type=str, default=None, help='Model ID for evaluation')
+    parser.add_argument('--api_key', type=str, default=os.environ.get('API_KEY'), help='API key for external services')
+    parser.add_argument('--base_url', type=str, default=os.environ.get('BASE_URL'), help='Base URL for API services')
+    parser.add_argument('--model_id', type=str, default=os.environ.get('MODEL_ID'), help='Model ID for evaluation')
 
     # Evaluation settings
     parser.add_argument('--method', type=str, nargs='+', default=None, help='Method name(s) to evaluate. Accept multiple values.')
@@ -191,6 +200,15 @@ def main():
     parser.add_argument('--mode', type=str, default=None, help='Mode for method. None => enumerate all available modes.')
     parser.add_argument('--resume', action=argparse.BooleanOptionalAction, default=False, help='Only controls result timestamp alignment. True: align result timestamp to output timestamp. False: create a new result timestamp for each combination. Does not affect enumeration.')
 
+    # Fast CIDS options (defaults preserve current behavior; CLI overrides are read via cli_args)
+    parser.add_argument('--fast_cids', action='store_true', help='Enable fast CIDS copy-paste path (CLIP single-model only).')
+    parser.add_argument('--cids_batch_size', type=int, default=32, help='Batch size for fast CIDS embedding.')
+    parser.add_argument('--cids_block_size', type=int, default=4096, help='Block size for fast similarity matmul.')
+    # Extended fast options (default off / 0)
+    parser.add_argument('--cids_fast_only_copypaste', action='store_true', help='Fast mode: compute only Copy-Paste score and skip other CIDS stats.')
+    parser.add_argument('--cids_fast_parallel_shots', type=int, default=0, help='Parallel shots for DINO detect+crop (0 to disable).')
+    parser.add_argument('--cids_fast_num_workers', type=int, default=0, help='Num workers for CPU-side CLIP preprocessing (DataLoader).')
+    
     args = parser.parse_args()
     
     # Merge config with args, args take precedence

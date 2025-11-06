@@ -6,7 +6,7 @@ import base64
 from PIL import Image
 
 
-def gptv_query(transcript=None, top_p=0.2, temp=0., model_type="gpt-4o", api_key='', base_url='', seed=123, max_tokens=512, wait_time=10):
+def gptv_query(transcript=None, top_p=0.2, temp=0., model_type="gpt-4.1", api_key='', base_url='', seed=123, max_tokens=512, wait_time=10):
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"

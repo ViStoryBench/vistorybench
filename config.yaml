@@ -12,9 +12,6 @@ core:
 evaluators:
   prompt_align:
     gpt:
-      model: 
-      base_url: 
-      api_key: 
       workers: 16
 
   cids:

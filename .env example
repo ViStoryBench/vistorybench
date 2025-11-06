@@ -1,0 +1,10 @@
+# Canonical AWS envs (optional; script maps aliases above automatically)
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_S3_BUCKET=
+AWS_S3_ENDPOINT=
+AWS_REGION=
+S3_PUBLIC_BASE_URL=
+MODEL_ID=
+BASE_URL=
+API_KEY=

@@ -13,7 +13,6 @@ from vistorybench.dataset_loader.read_outputs import load_outputs
 from vistorybench.bench.prompt_align.gptv_utils import gptv_query, load_img_content
 
 
-
 class PromptAlignEvaluator(BaseEvaluator):
     def __init__(self, config: dict, timestamp: str, mode: str, language: str, outputs_timestamp=None):
         super().__init__(config, timestamp, mode, language, outputs_timestamp)
@@ -22,9 +21,9 @@ class PromptAlignEvaluator(BaseEvaluator):
         pa_cfg = self.get_evaluator_config('prompt_align')
         gpt_cfg = pa_cfg.get('gpt', {}) if isinstance(pa_cfg, dict) else {}
         # CLI overrides have priority but do not mutate YAML structure
-        model = self.get_cli_arg('model_id') or gpt_cfg.get('model') or 'gpt-4o'
-        base_url = gpt_cfg.get('base_url') or self.get_base_url()
-        api_key = gpt_cfg.get('api_key') or self.get_api_key()
+        model = self.get_model_id() or 'gpt-4.1'
+        base_url = self.get_base_url()
+        api_key = self.get_api_key()
         
         self.gpt_api_pkg = (model, api_key, base_url)
         self.workers = int(gpt_cfg.get('workers', 1) or 1)

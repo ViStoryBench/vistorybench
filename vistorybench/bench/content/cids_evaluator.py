@@ -140,9 +140,9 @@ class CIDSEvaluator(BaseEvaluator):
         # Prompt Align GPT-V config for single_character_action integration
         pa_cfg = self.get_evaluator_config('prompt_align')
         gpt_cfg = pa_cfg.get('gpt', {}) if isinstance(pa_cfg, dict) else {}
-        model = self.get_cli_arg('model_id') or gpt_cfg.get('model') or 'gpt-4o'
-        base_url = gpt_cfg.get('base_url') or self.get_base_url()
-        api_key = gpt_cfg.get('api_key') or self.get_api_key()
+        base_url = self.get_base_url()
+        api_key = self.get_api_key()
+        model = self.get_model_id() or 'gpt-4.1'
         self.gpt_api_pkg = (model, api_key, base_url)
         self.gpt_workers = int(gpt_cfg.get('workers', 1) or 1)
         self._pa_skip_warned = False
@@ -801,6 +801,9 @@ class CIDSEvaluator(BaseEvaluator):
                                 pa_char_scores[Characters[char]['name']] = int(score_val)
                             except Exception as _e:
                                 print(f"\033[33mWarning: single_character_action internal error for story {story_id}, shot {shot_id}, char {char}: {_e}\033[0m")
+                        else:
+                            pa_char_scores[Characters[char]['name']] = 0
+
                     else:
                         shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
 
@@ -873,15 +876,16 @@ class CIDSEvaluator(BaseEvaluator):
                         )  # [R, R]
                         # Here R >= 2 because cross_sims.shape[1] > 1
                         s_tr = torch.clamp(ref_ref_sims[0, 1:], -1.0, 1.0)     # [R-1]
+                        
+                        # Stability parameters
+                        eps = float(getattr(self, "copy_paste_eps", 1e-6))
+                        tau = float(getattr(self, "copy_paste_tau_chord", 1e-6))
 
                         # Chordal distances on unit sphere
                         d_gt = torch.sqrt(torch.clamp(2.0 * (1.0 - s_gt), min=eps))
                         d_gr = torch.sqrt(torch.clamp(2.0 * (1.0 - s_gr), min=eps))
                         d_tr = torch.sqrt(torch.clamp(2.0 * (1.0 - s_tr), min=eps))
 
-                        # Stability parameters
-                        eps = float(getattr(self, "copy_paste_eps", 1e-6))
-                        tau = float(getattr(self, "copy_paste_tau_chord", 1e-6))
 
                         # Normalize by separation between t and r
                         denom = torch.clamp(d_tr, min=eps).unsqueeze(0)         # [1, R-1]

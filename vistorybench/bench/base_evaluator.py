@@ -46,17 +46,20 @@ class BaseEvaluator(ABC):
         cli = self.config.get('cli_args', {}) if isinstance(self.config, dict) else {}
         return (
             cli.get('api_key')
-            or self.config.get('api_key', '')
-            or os.environ.get('OPENAI_API_KEY')
-            or os.environ.get('VISTORYBENCH_API_KEY')
+            or os.environ.get('API_KEY')
             or ''
         )
     
     def get_base_url(self):
         """Resolve base URL from CLI overrides or YAML."""
         cli = self.config.get('cli_args', {}) if isinstance(self.config, dict) else {}
-        return cli.get('base_url') or self.config.get('base_url', '')
+        return cli.get('base_url') or os.environ.get('BASE_URL')
     
+    def get_model_id(self):
+        """Resolve model ID from CLI overrides or YAML."""
+        cli = self.config.get('cli_args', {}) if isinstance(self.config, dict) else {}
+        return cli.get('model_id') or os.environ.get('MODEL_ID')
+
     def get_cli_arg(self, key, default=None):
         """Get a CLI argument passed via merged config without overlapping YAML keys."""
         cli = self.config.get('cli_args', {}) if isinstance(self.config, dict) else {}

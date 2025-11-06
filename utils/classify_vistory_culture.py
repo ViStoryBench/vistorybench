@@ -27,7 +27,6 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Ensure project root on sys.path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
@@ -248,7 +247,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--jsonl_out", default="data/result/vistory_culture_classification.jsonl", help="Optional JSONL output path")
     p.add_argument("--base_url", default="https://yunwu.ai", help="OpenAI base URL (e.g., https://api.openai.com or https://api.openai.com/v1)")
     p.add_argument("--model", default="gpt-4.1-mini-2025-04-14", help="OpenAI model id (e.g., gpt-4.1)")
-    p.add_argument("--api_key", default="sk-KOC6WE5hmu0pG8HO7dqwd3w61dW7ds4Z3zx1UbSUl9zKqi5H", help=f"API key (default from env {ENV_API_KEY} or config)")
+    p.add_argument("--api_key", default="", help=f"API key (default from env {ENV_API_KEY} or config)")
     p.add_argument("--top_p", type=float, default=0.2)
     p.add_argument("--temp", type=float, default=0.0)
     p.add_argument("--seed", type=int, default=123)

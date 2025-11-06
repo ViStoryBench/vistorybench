@@ -2,18 +2,20 @@
 # -*- coding: utf-8 -*-
 """
 Usage example:
-- Generate all stories (default ch):
-    python data_process/inference_custom/gemini_vistory/run_custom.py --language ch --timestamp 20250902_120000
-- Specify stories (e.g., 01,02) and override the output root path:
-    python data_process/inference_custom/gemini_vistory/run_custom.py --language en --story_ids 01,02 --outputs_root data/outputs --timestamp 20250902_120000
-- Provide API key via environment variable:
-    export YUNWU_API_KEY="sk-..." then run the script
+- After starting the local service (see omnigen2/server.py), generate all stories (default en):
+    python data_process/inference_custom/omnigen2/run_custom.py --language en --timestamp 20250911_120000
+- Specify stories (e.g., 01,02) and override the output root path and service address:
+    python data_process/inference_custom/omnigen2/run_custom.py --language ch --story_ids 01,02 --outputs_root data/outputs --server_url http://127.0.0.1:8000 --timestamp 20250911_120000
+- Provide service address and API key via environment variables (key is optional):
+    export OMNIGEN2_SERVER_URL="http://127.0.0.1:8000"
+    export OMNIGEN2_API_KEY="sk-..."  # Passthrough only, no authentication required
 """
 
 import os
 import sys
 import argparse
 import time
+
 import base64
 import json
 from datetime import datetime
@@ -24,13 +26,18 @@ import yaml
 import requests
 import numpy as np
 import cv2
+PROJECT_ROOT =os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, PROJECT_ROOT)
 
 from vistorybench.dataset_loader.dataset_load import StoryDataset
-
-DEFAULT_METHOD = "nano_banana"
-DEFAULT_MODE = "gemini-2.5-flash-image-preview"
+_proxy={"http":None,"https":None}
+DEFAULT_METHOD = "NextSceneQwenImageLora"
+DEFAULT_MODE = "base"
 DEFAULT_LANGUAGE = "en"
-ENV_API_KEY = ""
+ENV_SERVER_URL = "QWENIMAGEEDIT_SERVER_URL"
+ENV_API_KEY = "QWENIMAGEEDIT_API_KEY"
+
+NEGATIVE_PROMPT_DEFAULT = "(((deformed))), blurry, over saturation, bad anatomy, disfigured, poorly drawn face, mutation, mutated, (extra_limb), (ugly), (poorly drawn hands), fused fingers, messy drawing, broken legs censor, censored, censor_bar"
 
 def _log(msg: str) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -55,7 +62,6 @@ def resolve_paths(args, cfg: Dict[str, Any]) -> Dict[str, str]:
     """
     Parse dataset_root and outputs_root based on config.yaml and CLI overrides.
     """
-    # repo_root for making relative paths absolute
     repo_root = Path(__file__).resolve().parents[3]
     ds_cfg = (((cfg or {}).get("core") or {}).get("paths") or {}).get("dataset") or "data/dataset"
     out_cfg = (((cfg or {}).get("core") or {}).get("paths") or {}).get("outputs") or "data/outputs"
@@ -94,58 +100,61 @@ def decode_image_from_base64(data_b64: str) -> Optional[np.ndarray]:
         _log(f"[WARN] Failed to decode returned image: {e}")
         return None
 
-def generate_with_gemini(
+def generate_with_omnigen2_server(
+    server_url: str,
     api_model: str,
-    api_key: str,
+    api_key: Optional[str],
     prompt: str,
     char_image_paths: List[str],
     prev_image_path: Optional[str],
+    gen_cfg: Optional[Dict[str, Any]] = None,
     retries: int = 3,
     sleep: float = 2.0,
-    timeout: float = 90.0
+    timeout: float = 120.0,
 ) -> Optional[np.ndarray]:
     """
-    Call the yunwu Gemini API for a single generation.
-    Input: prompt, list of character initial image paths, previous shot path (optional)
+    Call the local OmniGen2 REST service for a single generation.
+    Input: prompt, list of character reference image paths, previous shot path (optional), generation configuration
     Output: OpenCV BGR image (np.ndarray) or None
     """
-    url = f"https://yunwu.ai/v1beta/models/{api_model}:generateContent?key={api_key}"
+    base = server_url.rstrip("/")
+    url = f"{base}/v1beta/models/{api_model}:generateContent"
     headers = {"Content-Type": "application/json"}
+    params = {}
+    if api_key:
+        params["key"] = api_key
 
     # Assemble parts
-    parts: List[Dict[str, Any]] = [{"text": prompt}]
-    # Only the first reference image for each character; skip if no image
+    parts: List[Dict[str, Any]] = [{"text": "Next Scene: " + prompt}]
     for p in (char_image_paths or []):
         b64 = b64_jpeg_from_image_path(p)
         if b64:
-            parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64}})
-    # Previous shot image
+            parts.append({"inlineData": {"mime_type": "image/jpeg", "data": b64}})
     if prev_image_path:
         b64_prev = b64_jpeg_from_image_path(prev_image_path)
         if b64_prev:
             parts.append({"type": "text", "text": "last reference shot:"})
-            parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64_prev}})
+            parts.append({"inlineData": {"mime_type": "image/jpeg", "data": b64_prev}})
 
     payload = {
         "contents": [{
             "role": "user",
             "parts": parts
         }],
-        "generationConfig": {"responseModalities": ["TEXT","IMAGE"]}
+        "generationConfig": gen_cfg or {}
     }
 
     for attempt in range(1, retries + 1):
         try:
-            _log(f"[REQ] Calling {api_model}, attempt {attempt}/{retries}, parts={len(parts)}")
-            resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            _log(f"[REQ] POST {url} attempt {attempt}/{retries} | parts={len(parts)}")
+            resp = requests.post(url, headers=headers, params=params, json=payload, timeout=timeout,proxies=_proxy)
             if not (200 <= resp.status_code < 300):
                 _log(f"[WARN] Non-2xx response: {resp.status_code} {resp.text[:200]}")
                 raise RuntimeError(f"HTTP {resp.status_code}")
             data = resp.json()
-            # Parse the first item containing inlineData
             candidates = data.get("candidates") or []
             if not candidates:
-                raise ValueError("Response missing candidates")
+                raise ValueError("Response is missing candidates")
             content = candidates[0].get("content") or {}
             parts_out = content.get("parts") or []
             img_b64 = None
@@ -163,7 +172,7 @@ def generate_with_gemini(
         except Exception as e:
             if attempt < retries:
                 delay = sleep * (2 ** (attempt - 1))
-                _log(f"[INFO] Call failed: {e} | Retrying after {delay:.1f}s")
+                _log(f"[INFO] Call failed: {e} | Retrying in {delay:.1f}s")
                 time.sleep(delay)
             else:
                 _log(f"[ERROR] Multiple failures, giving up: {e}")
@@ -177,31 +186,45 @@ def save_png(img: np.ndarray, out_path: str) -> bool:
             _log(f"[ERROR] Save failed: {out_path}")
         return ok
     except Exception as e:
-        _log(f"[ERROR] Exception during save: {out_path} | {e}")
+        _log(f"[ERROR] Exception on save: {out_path} | {e}")
         return False
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="ViStory multi-shot generation (yunwu Gemini)",
+        description="ViStory Multi-shot Generation (OmniGen2 Local REST Service)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    # Configuration and paths
-    parser.add_argument("--config", type=str, default=None, help="Path to config.yaml; defaults to repository root config.yaml")
-    parser.add_argument("--dataset_root", type=str, default=None, help="Override dataset root path")
-    parser.add_argument("--outputs_root", type=str, default=None, help="Override output root path")
+    # Configuration and Paths
+    parser.add_argument("--config", type=str, default=None, help="Path to config.yaml; defaults to the config.yaml in the repository root")
+    parser.add_argument("--dataset_root", type=str, default=None, help="Override the dataset root path")
+    parser.add_argument("--outputs_root", type=str, default=None, help="Override the output root path")
+    parser.add_argument("--split", type=str, choices=["lite","full"], default="full", help="Select the story list split")
     # Language / Method / Mode / Timestamp
     parser.add_argument("--language", type=str, choices=["ch","en"], default=DEFAULT_LANGUAGE)
     parser.add_argument("--method", type=str, default=DEFAULT_METHOD)
     parser.add_argument("--mode", type=str, default=DEFAULT_MODE, help="Directory name can contain dots")
-    parser.add_argument("--timestamp", type=str, default="20250908_152837", help="YYYYMMDD_HHMMSS; defaults to current time")
-    # Story selection
+    parser.add_argument("--timestamp", type=str, default=None, help="YYYYMMDD_HHMMSS; defaults to the current time")
+    # Story Selection
     parser.add_argument("--story_ids", type=str, default=None, help="Comma-separated list of story IDs, e.g., 01,02")
-    # API Key
-    parser.add_argument("--api_key", type=str, default=None, help="Can use this parameter or the environment variable YUNWU_API_KEY")
+    # Service and API Key
+    parser.add_argument("--server_url", type=str, default=os.getenv(ENV_SERVER_URL, "http://127.0.0.1:8800"), help=f"OmniGen2 service base URL, can also use environment variable {ENV_SERVER_URL}")
+    parser.add_argument("--api_key", type=str, default=os.getenv(ENV_API_KEY, None), help=f"Can use this parameter or environment variable {ENV_API_KEY} (service does not validate by default)")
+    # Generation Parameters
+    parser.add_argument("--width", type=int, default=1344)
+    parser.add_argument("--height", type=int, default=768)
+    parser.add_argument("--steps", type=int, default=50, help="num_inference_steps")
+    parser.add_argument("--text_guidance_scale", type=float, default=5.0)
+    parser.add_argument("--image_guidance_scale", type=float, default=2.0)
+    parser.add_argument("--cfg_range_start", type=float, default=0.0)
+    parser.add_argument("--cfg_range_end", type=float, default=1.0)
+    parser.add_argument("--num_images_per_prompt", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--scheduler", type=str, default="euler", choices=["euler","dpmsolver++"])
+    parser.add_argument("--negative_prompt", type=str, default=NEGATIVE_PROMPT_DEFAULT)
     # Retries
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--sleep", type=float, default=2.0, help="Initial retry delay in seconds, with exponential backoff")
-    parser.add_argument("--timeout", type=float, default=120.0, help="HTTP request timeout in seconds")
+    parser.add_argument("--timeout", type=float, default=300, help="HTTP request timeout in seconds")
     return parser.parse_args()
 
 def main() -> None:
@@ -215,17 +238,15 @@ def main() -> None:
     method = args.method
     mode = args.mode
     timestamp = args.timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
-    api_key = ENV_API_KEY or args.api_key
-    if not api_key:
-        _log(f"[FATAL] Missing API Key, please set the environment variable {ENV_API_KEY} or pass --api_key")
-        sys.exit(1)
+    server_url = args.server_url
+    api_key = args.api_key
 
     api_model = f"{method}-{mode}"
 
-    # Data loading
+    # Data Loading
     dataset_dir = os.path.join(dataset_root, "ViStory")
     dataset = StoryDataset(dataset_dir)
-    all_story_ids = dataset.get_story_name_list(split='lite')
+    all_story_ids = dataset.get_story_name_list(split=args.split)
     if not all_story_ids:
         _log(f"[FATAL] Story directory not found: {dataset_dir}")
         sys.exit(1)
@@ -243,7 +264,23 @@ def main() -> None:
 
     _log(f"[INFO] Dataset: {dataset_dir} | Output: {outputs_root}")
     _log(f"[INFO] method/mode/lang/ts: {method}/{mode}/{language}/{timestamp}")
-    count=1
+    _log(f"[INFO] Using service: {server_url} | Model: {api_model}")
+
+    # Organize generationConfig
+    gen_cfg = {
+        "width": args.width,
+        "height": args.height,
+        "num_inference_steps": args.steps,
+        "text_guidance_scale": args.text_guidance_scale,
+        "image_guidance_scale": args.image_guidance_scale,
+        "cfg_range_start": args.cfg_range_start,
+        "cfg_range_end": args.cfg_range_end,
+        "num_images_per_prompt": args.num_images_per_prompt,
+        "seed": args.seed,
+        "scheduler": args.scheduler,
+        "negative_prompt": args.negative_prompt,
+    }
+
     for sid in story_ids:
         story = stories.get(sid)
         if not story:
@@ -255,45 +292,47 @@ def main() -> None:
         _log(f"[INFO] Starting story: {sid} | {len(shots_all)} shots | Output directory: {out_story_dir}")
 
         prev_image_path: Optional[str] = None
-        # If the first frame already exists, prev_image_path points to it for continuation
-        first_path = os.path.join(out_story_dir, f"shot_{0:02d}.png")
-        if os.path.isfile(first_path):
-            prev_image_path = first_path
 
         for idx, shot in enumerate(shots_all):
-            count += 1
-            out_path = os.path.join(out_story_dir, f"shot_{idx:02d}.png")
+            out_path = os.path.join(out_story_dir,'shots', f"shot_{idx:02d}.png")
             if os.path.isfile(out_path):
                 _log(f"[SKIP] Already exists, skipping: {sid} #{idx:02d} -> {out_path}")
-                prev_image_path = out_path  # Resume from breakpoint: use as the next frame's prev
+                prev_image_path = out_path
                 continue
 
             prompt = shot.get("prompt", "")
-            char_imgs = [p for p in (shot.get("image_paths") or []) if p and os.path.isfile(p)]
-            _log(f"[SHOT] {sid} #{idx:02d} | Character images: {len(char_imgs)} | prev: {'Y' if prev_image_path else 'N'}")
+            if idx == 0:
+                char_imgs = [p for p in (shot.get("image_paths") or []) if p and os.path.isfile(p)]
+                use_prev = None
+            else:
+                char_imgs = []
+                use_prev = prev_image_path
+            _log(f"[SHOT] {sid} #{idx:02d} | Character images: {len(char_imgs)} | prev: {'Y' if use_prev else 'N'}")
 
-            img = generate_with_gemini(
-                api_model=mode,
+            img = generate_with_omnigen2_server(
+                server_url=server_url,
+                api_model=api_model,
                 api_key=api_key,
                 prompt=prompt,
                 char_image_paths=char_imgs,
-                prev_image_path=prev_image_path,
+                prev_image_path=use_prev,
+                gen_cfg=gen_cfg,
                 retries=args.retries,
                 sleep=args.sleep,
-                timeout=args.timeout
+                timeout=args.timeout,
             )
             if img is None:
                 _log(f"[ERROR] Generation failed, skipping this shot: {sid} #{idx:02d}")
-                # If it fails, do not pass prev to the next frame to avoid image sequence errors
-                prev_image_path = None
+                # keep prev_image_path unchanged to still reference last successful frame
                 continue
             if save_png(img, out_path):
                 _log(f"[SAVE] {sid} #{idx:02d} -> {out_path}")
                 prev_image_path = out_path
             else:
-                _log(f"[ERROR] Save failed, abandoning as next frame's prev: {out_path}")
-                prev_image_path = None
-    print("All done.",count)
+                _log(f"[ERROR] Save failed, abandoning as prev for the next frame: {out_path}")
+                # keep prev_image_path unchanged
+
+    _log("All done.")
 
 if __name__ == "__main__":
     main()
