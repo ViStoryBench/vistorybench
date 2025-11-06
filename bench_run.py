@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 import torch
 import sys
-
+import time
 from vistorybench.dataset_loader.read_outputs import load_outputs
 from vistorybench.result_management.manager import ResultManager
 from vistorybench.dataset_loader.dataset_load import StoryDataset
@@ -183,7 +183,7 @@ def main():
     parser.add_argument('--model_id', type=str, default=None, help='Model ID for evaluation')
 
     # Evaluation settings
-    parser.add_argument('--method', type=str, nargs='+', required=True, help='Method name(s) to evaluate. Accept multiple values.')
+    parser.add_argument('--method', type=str, nargs='+', default=None, help='Method name(s) to evaluate. Accept multiple values.')
     parser.add_argument('--metrics', type=str, nargs='+', choices=list(EVALUATOR_REGISTRY.keys()), default=None, help='List of metrics to run. Runs all if not specified.')
     parser.add_argument('--language', type=str, choices=['en', 'ch', 'all'], default=None, help='Language to evaluate. None/all => enumerate all available languages.')
     parser.add_argument('--split', type=str, choices=['full', 'lite'], default='full', help='Dataset split to use.')
@@ -195,6 +195,8 @@ def main():
     
     # Merge config with args, args take precedence
     merged_config = merge_config_with_args(config, args)
+    if args.method is None:
+        args.method = os.listdir(args.outputs_path)
 
     # --- Main Evaluation Logic ---
     # Use unified config paths for results, preferring CLI overrides without mutating YAML
@@ -255,7 +257,7 @@ def main():
                         method_name=method_name,
                         mode=mode,
                         language=lang,
-                        timestamp=results_ts,
+                        timestamp=False if args.resume else results_ts,
                         base_path=results_root,
                         outputs_timestamp=ts_out
                     )

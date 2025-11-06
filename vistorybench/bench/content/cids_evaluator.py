@@ -124,7 +124,10 @@ class CIDSEvaluator(BaseEvaluator):
         match = self.cids_cfg.get('matching', {})
         self.superfluous_threshold = match.get('superfluous_threshold', 0.5)
         self.topk_per_nochar = match.get('topk_per_nochar', 3)
-        self.ensemble_weights = self.cids_cfg.get('ensemble_weights', {}) 
+        self.ensemble_weights = self.cids_cfg.get('ensemble_weights', {})
+        # Copy-paste metric parameters for chordal metric (arccos-free, range [0,1])
+        self.copy_paste_eps = float(self.cids_cfg.get('copy_paste_eps', 1e-6))
+        self.copy_paste_tau_chord = float(self.cids_cfg.get('copy_paste_tau_chord', 1e-6))
 
         # ArcFace detection thresholds stepping (constants)
         self.arcface_det_thresh_initial = 0.45
@@ -854,10 +857,45 @@ class CIDSEvaluator(BaseEvaluator):
                 ref_count = len(ref_clip_feats[char]) if isinstance(ref_clip_feats[char], list) else ref_clip_feats[char].shape[0]
                 if ref_count > 1:
                     copy_paste_cnt += 1
-                    cross_sims = self._compute_multimodel_similarity_matrix(char_feats, ref_clip_feats[char], method=self.ensemble_method)
+                    cross_sims = self._compute_multimodel_similarity_matrix(
+                        char_feats, ref_clip_feats[char], method=self.ensemble_method
+                    )  # [G, R]
                     if cross_sims.shape[1] > 1:
-                        copy_paste_score = (cross_sims[:, 0].unsqueeze(-1) - cross_sims[:, 1:]).mean().item()
-                        shot_copy_paste_score += copy_paste_score
+                        # CopyChord/CopyRate (chordal metric, arccos-free, range [0,1])
+                        # t = ref[0], r = ref[1:]
+                        # Stabilize cosine to [-1, 1]
+                        s_gt = torch.clamp(cross_sims[:, 0], -1.0, 1.0)       # [G]
+                        s_gr = torch.clamp(cross_sims[:, 1:], -1.0, 1.0)       # [G, R-1]
+
+                        # Reference to reference similarity to compute s_tr
+                        ref_ref_sims = self._compute_multimodel_similarity_matrix(
+                            ref_clip_feats[char], ref_clip_feats[char], method=self.ensemble_method
+                        )  # [R, R]
+                        # Here R >= 2 because cross_sims.shape[1] > 1
+                        s_tr = torch.clamp(ref_ref_sims[0, 1:], -1.0, 1.0)     # [R-1]
+
+                        # Chordal distances on unit sphere
+                        d_gt = torch.sqrt(torch.clamp(2.0 * (1.0 - s_gt), min=eps))
+                        d_gr = torch.sqrt(torch.clamp(2.0 * (1.0 - s_gr), min=eps))
+                        d_tr = torch.sqrt(torch.clamp(2.0 * (1.0 - s_tr), min=eps))
+
+                        # Stability parameters
+                        eps = float(getattr(self, "copy_paste_eps", 1e-6))
+                        tau = float(getattr(self, "copy_paste_tau_chord", 1e-6))
+
+                        # Normalize by separation between t and r
+                        denom = torch.clamp(d_tr, min=eps).unsqueeze(0)         # [1, R-1]
+                        copy_chord = (d_gt.unsqueeze(1) - d_gr) / denom         # [G, R-1]
+                        copy_rate = 0.5 * (1.0 + copy_chord)                    # [G, R-1]
+
+                        # Degenerate case: if t and r are nearly identical, result is set to 0.5
+                        if torch.any(d_tr < tau):
+                            deg_cols = (d_tr < tau).nonzero(as_tuple=False).squeeze(-1)  # [K]
+                            if deg_cols.numel() > 0:
+                                copy_rate[:, deg_cols] = 0.5
+
+                        char_copy_rate = copy_rate.mean().item()
+                        shot_copy_paste_score += char_copy_rate
                     else:
                         copy_paste_cnt -= 1
             else:
