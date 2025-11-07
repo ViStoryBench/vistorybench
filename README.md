@@ -372,7 +372,7 @@ Notes:
 - PromptAlign API key is read from env var VISTORYBENCH_API_KEY or via --api_key.
 - CLI --base_url and --model_id override evaluators.prompt_align.gpt.base_url/model per run without changing YAML.
 
-** Create and Configure the `.env` File **
+**Create and Configure the `.env` File**
 
 For security best practices, your API key should be stored in an environment file rather than being hardcoded. The `ViStoryBench` project is designed to read this sensitive information from a `.env` file.
 
