@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchvision.ops import box_convert
 import insightface
 from groundingdino.util.inference import load_model, load_image, predict, annotate
-from facenet_pytorch import InceptionResnetV1
+from .inception_resnet_v1 import InceptionResnetV1
 import sys
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
 import scipy.optimize
@@ -173,8 +173,8 @@ class CIDSEvaluator(BaseEvaluator):
                 enc = self.cids_cfg.get('encoders')
                 if isinstance(enc, dict) and 'clip' in enc and 'model_id' in enc['clip']:
                     clip_model_id = enc['clip']['model_id']
-            self.clip = CLIPModel.from_pretrained(clip_model_id).to(device)
-            self.clip_processor = CLIPProcessor.from_pretrained(clip_model_id)
+            self.clip = CLIPModel.from_pretrained(pretrain_path / clip_model_id).to(device)
+            self.clip_processor = CLIPProcessor.from_pretrained(pretrain_path / clip_model_id)
             print("CLIP model loaded successfully")
         except Exception as e:
             print(f"Could not load CLIP model: {e}")
@@ -196,7 +196,7 @@ class CIDSEvaluator(BaseEvaluator):
 
         # Load FaceNet
         try:
-            self.facenet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+            self.facenet = InceptionResnetV1(pretrained='vggface2', pretrained_path=pretrain_path).eval().to(device)
             print("FaceNet model loaded successfully")
         except Exception as e:
             print(f"Could not load FaceNet model: {e}")

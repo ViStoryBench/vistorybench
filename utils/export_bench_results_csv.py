@@ -45,21 +45,11 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 FRONT_COLS = ["method", "model", "mode", "timestamp"]
-LITE_METHODs=['animdirector', 'doubao', 'gpt4o', 'moki', 'movieagent', 'nano_banana', 'seedstory', 'storyadapter', 'storygen', 'uno', 'xunfeihuiying',
-              'bairimeng_ai', 'gemini', 'mmstoryagent', 'morphic_studio', 'naive_baseline', 'omnigen2', 'shenbimaliang', 'storydiffusion', 'theatergen', 'vlogger']
-FULL_METHODs=['storydiffusion',
-              'uno',
-              'animdirector',
-              'movieagent',
-              'storygen',
-              'seedstory',
-              'vlogger',
-              'storyadapter',
-              'mmstoryagent',
-              'theatergen',
-              'omnigen2',
-              "naive_baseline"]
 
+LITE_METHODs=['CharaConsist','QwenImageEdit2509']
+FULL_METHODs=['CharaConsist','QwenImageEdit2509']
+# LITE_METHODs=['CharaConsist','QwenImageEdit2509','GPT4o','Gemini','NaiveBaseline','OmniGen2','NanoBanana','StoryDiffusion', 'StoryAdapter', 'StoryGen', 'UNO', 'TheaterGen', 'SeedStory', 'Vlogger', 'MovieAgent', 'AnimDirector', 'MMStoryAgent', 'MOKI', 'MorphicStudio', 'AIbrm', 'ShenBi', 'TypeMovie', 'DouBao']
+# FULL_METHODs=['CharaConsist','QwenImageEdit2509','NaiveBaseline','OmniGen2','StoryDiffusion', 'StoryAdapter', 'StoryGen', 'UNO', 'TheaterGen', 'SeedStory', 'Vlogger', 'MovieAgent', 'AnimDirector', 'MMStoryAgent']
 def iter_summary_files(root: Path) -> List[Path]:
     """Return all summary.json files under root (recursive), sorted by path string."""
     if not root.exists():

@@ -1,10 +1,10 @@
+import warnings
+warnings.filterwarnings("ignore")
 import os
 import argparse
 import yaml
 from pathlib import Path
-import torch
 import sys
-import time
 from vistorybench.dataset_loader.read_outputs import load_outputs
 from vistorybench.result_management.manager import ResultManager
 from vistorybench.dataset_loader.dataset_load import StoryDataset
@@ -16,7 +16,6 @@ from vistorybench.bench.diversity.diversity_evaluator import DiversityEvaluator
 from vistorybench.bench.quality.aesthetic_evaluator import AestheticEvaluator
 from vistorybench.bench.prompt_align.prompt_align_evaluator import PromptAlignEvaluator
 from dotenv import load_dotenv
-
 load_dotenv()
 
 

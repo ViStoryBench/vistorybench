@@ -58,52 +58,32 @@ CATEGORY_SUBMETRICS: Dict[str, List[str]] = {
 HIGHER_IS_BETTER: Dict[str, bool] = defaultdict(lambda: True)  # default True
 
 # Included methods grouped by display method category
+from typing import Dict, List
+
 INCLUDED_GROUPS: Dict[str, List[str]] = {
-    "Story image method": ["uno", "storyadapter", "storydiffusion", "theatergen", "storygen", "seedstory", "omnigen2"],
-    "Story video method": ["movieagent", "animdirector", "mmstoryagent", "vlogger"],
-    "Commercial platform": ["bairimeng_ai", "doubao", "xunfeihuiying", "morphic_studio", "shenbimaliang", "moki", "nano_banana"],
-    "MLLM model": ["gpt4o", "gemini"],
-    "Naive baseline": ["naive_baseline"],
-}
-
-# Method id -> display name
-METHOD_DISPLAY: Dict[str, str] = {
-    "uno": "UNO",
-    "storyadapter": "Storyadapter",
-    "storydiffusion": "Storydiffusion",
-    "theatergen": "Theatergen",
-    "storygen": "Storygen",
-    "seedstory": "Seedstory",
-    "omnigen2": "Omnigen2",
-    "movieagent": "Movieagent",
-    "animdirector": "Animdirector",
-    "mmstoryagent": "MM-StoryAgent",
-    "vlogger": "Vlogger",
-    "naive_baseline": "Naive baseline",
-    "bairimeng_ai": "AIbrm",
-    "doubao": "Doubao",
-    "xunfeihuiying": "Typemovie",
-    "morphic_studio": "Morphic_Studio",
-    "shenbimaliang": "ShenBi",
-    "moki": "MOKI",
-    "nano_banana": "Nanobanana",
-    "gpt4o": "GPT4o",
-    "gemini": "Gemini",
-}
-
-# (method_id, model_id) -> display for 'mode' column in output
-MODE_DISPLAY_OVERRIDES: Dict[Tuple[str, str], str] = {
-    ("movieagent", "SD-3"): "SD-3 version",
-    ("movieagent", "ROICtrl"): "ROICtrl version",
-    ("animdirector", "sd3"): "base",
-    ("vlogger", "text_only"): "text only",
-    ("vlogger", "img_ref"): "img ref",
-    ("storydiffusion", "Photomaker"): "(Img ref) (photomaker)",
-    ("storydiffusion", "original"): "original",
-    ("storyadapter", "img_ref_results_xl"): "(Img ref)(scale0)",
-    ("storyadapter", "img_ref_results_xl5"): "(Img ref)(scale5)",
-    ("storyadapter", "text_only_results_xl"): "text only (xl)",
-    ("storyadapter", "text_only_results_xl5"): "text only (xl5)",
+    "Story image method": [
+        "CharaConsist",
+        "OmniGen2",
+        "QwenImageEdit2509",
+        "SeedStory",
+        "StoryAdapter",
+        "StoryDiffusion",
+        "StoryGen",
+        "TheaterGen",
+        "UNO",
+    ],
+    "Story video method": ["AnimDirector", "MMStoryAgent", "MovieAgent", "Vlogger"],
+    "Commercial platform": [
+        "AIbrm",
+        "DouBao",
+        "MOKI",
+        "MorphicStudio",
+        "NanoBanana",
+        "ShenBi",
+        "TypeMovie",
+    ],
+    "MLLM model": ["GPT4o", "Gemini"],
+    "Naive baseline": ["NaiveBaseline"],
 }
 
 FRONT_COLS = ["method", "model", "mode", "timestamp"]
@@ -361,8 +341,8 @@ def build_output_rows(
     for method in sorted_methods:
         rk = selected[method]
         group = method_to_group.get(method, "")
-        model_disp = MODE_DISPLAY_OVERRIDES.get((rk.method, rk.model), rk.model)
-        method_disp = METHOD_DISPLAY.get(method, method)
+        model_disp = rk.model
+        method_disp = method
         row = {
             "Method": group,
             "model": method_disp,
@@ -503,8 +483,8 @@ def build_raw_metric_rows(
         if rk.method not in allowed_methods:
             continue
         group = method_to_group.get(rk.method, "")
-        method_disp = METHOD_DISPLAY.get(rk.method, rk.method)
-        mode_disp = MODE_DISPLAY_OVERRIDES.get((rk.method, rk.model), rk.model)
+        method_disp = rk.method
+        mode_disp = rk.model
 
         row: Dict[str, Any] = {
             "Method": group,

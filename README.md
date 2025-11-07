@@ -48,7 +48,7 @@ pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https
 # for cuda 11.8
 pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 --index-url https://download.pytorch.org/whl/cu118
 
-pip install -r requirements.txt
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 ```
 Choose the torch version that suits you on this website:
 https://pytorch.org/get-started/previous-versions/
@@ -111,7 +111,7 @@ Use our standardized loading script
 `dataset_load.py` or your own data loader.
 Run this command to verify successful dataset loading:
 ```bash
-pyhton vistorybench/dataset_loader/dataset_load.py
+python vistorybench/dataset_loader/dataset_load.py
 ```
 
 ### 2.2. Dataset Adapting 
@@ -228,9 +228,6 @@ When you run the evaluation code, it will automatically perform data reading (en
 
 We provide an automated pretrain-weight download script that allows you to download all the following weights with a single command. 
 ```bash
-sudo apt update
-sudo apt install aria2
-snap install yq
 sh download_weights.sh
 ```
 * All of them will be saved in `data/pretrain`.
