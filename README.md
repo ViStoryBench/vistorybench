@@ -349,11 +349,6 @@ core:
   runtime:
     device: cuda  # or cpu
 
-evaluators:
-  prompt_align:
-    gpt:
-      model: gpt-4.1           # optional override
-      base_url: https://api.openai.com  # optional override
 # Optional: CIDS knobs (uncomment to override defaults)
 #  cids:
 #    ref_mode: origin
@@ -379,6 +374,42 @@ Notes:
 - core.runtime.device is required at runtime; the tool will exit if missing.
 - PromptAlign API key is read from env var VISTORYBENCH_API_KEY or via --api_key.
 - CLI --base_url and --model_id override evaluators.prompt_align.gpt.base_url/model per run without changing YAML.
+
+** Create and Configure the `.env` File **
+
+For security best practices, your API key should be stored in an environment file rather than being hardcoded. The `ViStoryBench` project is designed to read this sensitive information from a `.env` file.
+
+1.  **Copy the `.env.example` File**
+
+    In the root directory of the project, run the following command to copy the example file. If `.env.example` does not exist, simply create a new file named `.env`.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  **Fill in the `.env` File**
+
+    Open the newly created `.env` file and fill in the following fields. As mentioned in the `README`, the API key is read from the `VISTORYBENCH_API_KEY` environment variable.
+
+    ```dotenv
+    # .env
+
+    # The base URL for your API service provider.
+    # This can also be set in config.yaml, but is convenient here.
+    BASE_URL="https://api.openai.com/v1"
+
+    # The model ID you wish to use for evaluations.
+    # This can also be set in config.yaml.
+    MODEL_ID="gpt-4o"
+
+    # [REQUIRED] Your API Key.
+    # Replace "sk-..." with your actual secret key.
+    API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ```
+
+**Important Notes:**
+*   **`API_KEY` is mandatory.** The `PromptAlign` evaluator will fail if it cannot find this environment variable.
+*   **Do not commit your `.env` file** containing the real API key to any public repository like GitHub. The project's `.gitignore` file should already be configured to prevent this.
 
 #### ⭐️ The pre-defined methods include:
 ```python
