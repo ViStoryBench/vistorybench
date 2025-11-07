@@ -397,7 +397,7 @@ For security best practices, your API key should be stored in an environment fil
 
     # The model ID you wish to use for evaluations.
     # This can also be set in config.yaml.
-    MODEL_ID="gpt-4o"
+    MODEL_ID="gpt-4.1"
 
     # [REQUIRED] Your API Key.
     # Replace "sk-..." with your actual secret key.
