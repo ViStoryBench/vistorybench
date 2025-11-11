@@ -6,9 +6,7 @@
   <a href="https://vistorybench.github.io/story_detail/"><img src="https://img.shields.io/static/v1?label=Browse%20Results&message=Web&color=green"></a> &ensp;
 <!-- ![image](https://github.com/user-attachments/assets/461d95ca-51cf-4b16-a584-be5b36c904db) -->
 
-![ViStoryBench Overview](assets/ece598d4c699d4aaa4d1cf61bdaeca38.png)
-
-![ViStoryBench Dataset Overview](assets/overview.png)
+![ViStoryBench Overview](assets/teaser.png)
 
 <p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
 
@@ -61,6 +59,8 @@ https://pytorch.org/get-started/previous-versions/
 ## <span style="color: orange">1. Dataset Preparation🐻</span>
 
 ### 1.1. About ViStory Dataset
+
+![ViStoryBench Dataset Overview](assets/overview.png)
 
 > **80** stories and **344** characters, both *Chinese* and *English*,
 >
