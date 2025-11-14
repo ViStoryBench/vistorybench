@@ -65,7 +65,7 @@ class AestheticEvaluator(BaseEvaluator):
             print(f"Warning: No images found for story {story_id}, method {method}")
             return {"metrics": {"aesthetic_score": 0}, "per_image_scores": []}
 
-        image_paths = story_outputs["shots"]
+        image_paths = story_outputs["shots"].values()
         
         per_image_scores = []
         if not image_paths:

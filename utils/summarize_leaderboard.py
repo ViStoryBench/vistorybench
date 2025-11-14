@@ -78,11 +78,10 @@ INCLUDED_GROUPS: Dict[str, List[str]] = {
         "DouBao",
         "MOKI",
         "MorphicStudio",
-        "NanoBanana",
         "ShenBi",
         "TypeMovie",
     ],
-    "MLLM model": ["GPT4o", "Gemini"],
+    "MLLM model": ["GPT4o", "Gemini","NanoBanana"],
     "Naive baseline": ["NaiveBaseline"],
 }
 

@@ -307,7 +307,7 @@ def main():
                     # Story-level metrics
                     for story_id, story_data in stories_data.items():
                         story_id = str(story_id)
-                        if story_id not in stories_outputs:
+                        if story_id not in stories_outputs or not stories_outputs[story_id]['shots']:
                             yellow_print(f"Warning: Story '{story_id}' not found in outputs for {method_name}/{lang}/{mode}/{ts_out}. Skipping.")
                             continue
 
@@ -340,6 +340,8 @@ def main():
 
                                 green_print(f"{metric_name} evaluation complete.")
                             except Exception as e:
+                                import traceback
+                                traceback.print_exc()
                                 yellow_print(f"Error during {metric_name} evaluation for story {story_id}: {e}")
 
                     # Handle method-level evaluators like diversity

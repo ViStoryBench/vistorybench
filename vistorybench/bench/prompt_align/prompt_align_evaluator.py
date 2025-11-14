@@ -98,7 +98,7 @@ class PromptAlignEvaluator(BaseEvaluator):
             return None
         
         image_paths = story_outputs["shots"]
-        if not story_data or not image_paths or len(story_data['shots']) != len(image_paths):
+        if not story_data or not image_paths:
             print(f"Skipping prompt alignment for {story_id}: data mismatch or missing.")
             return None
 
@@ -106,7 +106,7 @@ class PromptAlignEvaluator(BaseEvaluator):
         all_shots_scores = {}
         total_scores = {"scene": [], "character_action": [], "camera": []}
 
-        shots = story_data['shots']
+        shots = [shot for shot in story_data['shots'] if image_paths.get(int(shot['index']))]
 
         # Local worker for a single shot
         def eval_one(shot, image_path):
@@ -130,7 +130,7 @@ class PromptAlignEvaluator(BaseEvaluator):
         if  getattr(self, "workers", 1) and self.workers > 1:
             print(f"PromptAlign: evaluating {len(shots)} shots in parallel with {self.workers} workers.")
             with ThreadPoolExecutor(max_workers=self.workers) as ex:
-                futures = [ex.submit(eval_one, shot, img_path) for shot, img_path in zip(shots, image_paths)]
+                futures = [ex.submit(eval_one, shot, img_path) for shot, img_path in zip(shots, image_paths.values())]
                 for fut in as_completed(futures):
                     shot_index, shot_scores = fut.result()
                     if shot_index is None or shot_index == -1:

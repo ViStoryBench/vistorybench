@@ -103,7 +103,7 @@ class DiversityEvaluator(BaseEvaluator):
         )
         
         is_mean, is_std = calculate_inception_score(
-            image_paths,
+            image_paths.values(),
             batch_size=self.is_batch_size,
             splits=self.is_splits,
             device=self.device

@@ -87,7 +87,7 @@ class CSDEvaluator(BaseEvaluator):
 
         image_paths = story_outputs["shots"]
         
-        self_csd_score = self.get_self_csd_score(image_paths)
+        self_csd_score = self.get_self_csd_score(image_paths.values())
         cross_csd_score, shot_details = self.get_cross_csd_score(story_data, story_outputs)
 
         scores = {
@@ -143,7 +143,7 @@ class CSDEvaluator(BaseEvaluator):
         total_ri_score = []
         shot_details = []
 
-        for i, (shot_info, output_img_path) in enumerate(zip(story_data['shots'], outputs_data['shots'])):
+        for i, (shot_info, output_img_path) in enumerate(zip(story_data['shots'], outputs_data['shots'].values())):
             
             characters = story_data["characters"]
             char_key = shot_info['character_key']

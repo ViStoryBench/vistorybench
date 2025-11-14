@@ -150,9 +150,8 @@ def collect_images_from_outputs(
             continue
         shots: Optional[List[str]] = None
         if isinstance(data, dict):
-            v = data.get("shots")
-            if isinstance(v, list):
-                shots = [p for p in v if isinstance(p, str)]
+            v = data.get("shots").values()
+            shots = [p for p in v if isinstance(p, str)]
         # Fallback: if not standard schema, try to extract any string paths from values
         if shots is None and isinstance(data, dict):
             cand: List[str] = []

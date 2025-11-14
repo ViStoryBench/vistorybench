@@ -49,7 +49,7 @@ def _collect_story_images(story_dir: str,
         # story_dir itself already contains images
         target_dirs = [story_dir]
 
-    shot_paths: List[str] = []
+    shot_paths: dict[str] = {}
     char_paths: List[str] = []
 
     for td in target_dirs:
@@ -75,12 +75,7 @@ def _collect_story_images(story_dir: str,
             fp = os.path.join(shot_base, f)
             if _is_valid_image(fp):
                 # some business require suffix filtering
-                base, _ = os.path.splitext(f)
-                if base.endswith('_1') or base.endswith('-1'):
-                    # keep only the “_1” or “-1” suffixed images when that pattern exists
-                    shot_paths.append(fp)
-                else:
-                    shot_paths.append(fp)
+                shot_paths[int(f.split('_')[-1].split('.')[0])] = fp
 
         # chars
         if char_base:

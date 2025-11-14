@@ -9,7 +9,7 @@ supervision==0.6.0
 groundingdino-py==0.4.0
 facexlib==0.3.0
 openpyxl==3.1.2
-numpy==1.24.4
+numpy<2.0.0,>=1.23.5
 opencv-python==4.9.0.80
 opencv-python-headless==4.9.0.80
 huggingface-hub==0.34.4
