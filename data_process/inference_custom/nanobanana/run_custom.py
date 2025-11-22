@@ -24,13 +24,16 @@ import yaml
 import requests
 import numpy as np
 import cv2
-
+PROJECT_ROOT =os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, PROJECT_ROOT)
+from dotenv import load_dotenv
+load_dotenv()
 from vistorybench.dataset_loader.dataset_load import StoryDataset
 
-DEFAULT_METHOD = "nano_banana"
-DEFAULT_MODE = "gemini-2.5-flash-image-preview"
+DEFAULT_METHOD = "NanoBanana"
+DEFAULT_MODE = "gemini-3-pro-image-preview"
 DEFAULT_LANGUAGE = "en"
-ENV_API_KEY = ""
+API_KEY = os.getenv('API_KEY','')
 
 def _log(msg: str) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -131,7 +134,7 @@ def generate_with_gemini(
             "role": "user",
             "parts": parts
         }],
-        "generationConfig": {"responseModalities": ["TEXT","IMAGE"]}
+        "generationConfig": {"responseModalities": ["TEXT","IMAGE"],'imageConfig':{'aspectRatio': "16:9","image_size":"4K"}}
     }
 
     for attempt in range(1, retries + 1):
@@ -193,7 +196,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--language", type=str, choices=["ch","en"], default=DEFAULT_LANGUAGE)
     parser.add_argument("--method", type=str, default=DEFAULT_METHOD)
     parser.add_argument("--mode", type=str, default=DEFAULT_MODE, help="Directory name can contain dots")
-    parser.add_argument("--timestamp", type=str, default="20250908_152837", help="YYYYMMDD_HHMMSS; defaults to current time")
+    parser.add_argument("--timestamp", type=str, default='20251121_173211', help="YYYYMMDD_HHMMSS; defaults to current time")
     # Story selection
     parser.add_argument("--story_ids", type=str, default=None, help="Comma-separated list of story IDs, e.g., 01,02")
     # API Key
@@ -201,7 +204,7 @@ def parse_args() -> argparse.Namespace:
     # Retries
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--sleep", type=float, default=2.0, help="Initial retry delay in seconds, with exponential backoff")
-    parser.add_argument("--timeout", type=float, default=120.0, help="HTTP request timeout in seconds")
+    parser.add_argument("--timeout", type=float, default=1200.0, help="HTTP request timeout in seconds")
     return parser.parse_args()
 
 def main() -> None:
@@ -215,9 +218,9 @@ def main() -> None:
     method = args.method
     mode = args.mode
     timestamp = args.timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
-    api_key = ENV_API_KEY or args.api_key
+    api_key = API_KEY or args.api_key
     if not api_key:
-        _log(f"[FATAL] Missing API Key, please set the environment variable {ENV_API_KEY} or pass --api_key")
+        _log(f"[FATAL] Missing API Key, please set the environment variable {API_KEY} or pass --api_key")
         sys.exit(1)
 
     api_model = f"{method}-{mode}"
@@ -250,7 +253,7 @@ def main() -> None:
             _log(f"[WARN] Skipping empty story: {sid}")
             continue
         shots_all = dataset.story_prompt_merge(story, mode='all')
-        out_story_dir = os.path.join(outputs_root, method, mode, language, timestamp, sid)
+        out_story_dir = os.path.join(outputs_root, method, 'Gemini3ProImagePreview', language, timestamp, sid,"shots")
         ensure_dir(out_story_dir)
         _log(f"[INFO] Starting story: {sid} | {len(shots_all)} shots | Output directory: {out_story_dir}")
 
@@ -262,7 +265,7 @@ def main() -> None:
 
         for idx, shot in enumerate(shots_all):
             count += 1
-            out_path = os.path.join(out_story_dir, f"shot_{idx:02d}.png")
+            out_path = os.path.join(out_story_dir, f"shot_{idx+1:02d}.png")
             if os.path.isfile(out_path):
                 _log(f"[SKIP] Already exists, skipping: {sid} #{idx:02d} -> {out_path}")
                 prev_image_path = out_path  # Resume from breakpoint: use as the next frame's prev

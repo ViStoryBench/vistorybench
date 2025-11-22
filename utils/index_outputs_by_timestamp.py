@@ -9,6 +9,15 @@ from pathlib import Path
 TIMESTAMP_REGEX = r"^\d{8}[-_]\d{6}$"
 TIMESTAMP_RE = re.compile(TIMESTAMP_REGEX)
 LANG_CODES = {"en","zh","ch","cn","jp","ja","fr","de","es","ru","ko"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"}
+
+def timestamp_contains_images(timestamp_dir: Path):
+    for dirpath, _, filenames in os.walk(timestamp_dir):
+        for filename in filenames:
+            if Path(filename).suffix.lower() in IMAGE_EXTENSIONS:
+                return True
+    return False
+
 
 def find_timestamp_entries(outputs_root: Path):
     """Scan outputs_root and collect all directories whose name matches timestamp format."""
@@ -17,6 +26,9 @@ def find_timestamp_entries(outputs_root: Path):
     for dirpath, dirnames, filenames in os.walk(root_str):
         base = os.path.basename(dirpath)
         if TIMESTAMP_RE.match(base):
+            timestamp_dir = Path(dirpath)
+            if not timestamp_contains_images(timestamp_dir):
+                continue
             rel_path = str(Path(dirpath).relative_to(outputs_root).as_posix())
             segments = rel_path.split("/")
             ancestors = segments[:-1]

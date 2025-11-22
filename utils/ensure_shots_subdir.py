@@ -143,7 +143,7 @@ def main():
             "and moving shot images into it. Supports both outputs layouts."
         )
     )
-    parser.add_argument("--outputs-root", type=str, default="data/outputs",
+    parser.add_argument("--outputs-root", type=str, default="data/outputs_avif",
                         help="Root of outputs directory (default: data/outputs)")
     parser.add_argument("--dry-run", action="store_true",default=False, help="Do not modify files, only print actions")
     parser.add_argument("--quiet", action="store_true", help="Reduce log output")

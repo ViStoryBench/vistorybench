@@ -80,9 +80,10 @@ INCLUDED_GROUPS: Dict[str, List[str]] = {
         "MorphicStudio",
         "ShenBi",
         "TypeMovie",
+        
     ],
-    "MLLM model": ["GPT4o", "Gemini","NanoBanana"],
-    "Naive baseline": ["NaiveBaseline"],
+    "MLLM model": ["GPT4o", "Gemini","NanoBanana","Sora2",'Seedream4'],
+    # "Naive baseline": ["NaiveBaseline"],
 }
 
 FRONT_COLS = ["method", "model", "mode", "timestamp"]
@@ -428,7 +429,7 @@ def _pick_existence_key(metrics: Dict[str, float]) -> Optional[str]:
         "metrics.prompt_align.metrics.character_existence",
         "metrics.prompt_align.metrics.character_existence_number",
         "metrics.prompt_align.metrics.character_number",
-        "metrics.prompt_align.metrics.character_count",
+        "metrics.cids.metrics.single_character_action",
     ):
         if k in metrics:
             return k
@@ -447,7 +448,7 @@ def _compute_pa_avg_from_row(row: Dict[str, Any]) -> Optional[float]:
         "metrics.prompt_align.metrics.character_existence",
         "metrics.prompt_align.metrics.character_existence_number",
         "metrics.prompt_align.metrics.character_number",
-        "metrics.prompt_align.metrics.character_count",
+        "metrics.cids.metrics.single_character_action",
     ):
         if row.get(k) is not None:
             ex_k = k
@@ -602,11 +603,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ("Self Cref Score (Gen-Gen)", "metrics.cids.metrics.cids_self_mean"),
             ("Aesthetics Score", "metrics.aesthetic.metrics.aesthetic_score"),
             ("Inception Score", "metrics.diversity.metrics.inception_score"),
-            ("Prompt Align (Scene)", "metrics.prompt_align.metrics.scene"),
-            ("Prompt Align (Camera)", "metrics.prompt_align.metrics.camera"),
-            ("Prompt Align (Character Existence|Number) OCCM", "metrics.cids.metrics.occm"),
-            ("Prompt Align (Global Character Action|Script)", "metrics.prompt_align.metrics.character_action"),
-            ("Prompt Align (Local/Single Character Action|Script)", "metrics.cids.metrics.single_character_action"),
+            ("OCCM", "metrics.cids.metrics.occm"),
+            ("Scene", "metrics.prompt_align.metrics.scene"),
+            ("Camera", "metrics.prompt_align.metrics.camera"),
+            ("Global Character Action", "metrics.prompt_align.metrics.character_action"),
+            ("Local/Single Character Action", "metrics.cids.metrics.single_character_action"),
             ("Prompt Align Avg", None),
         ]
         text += print_tsv_js_const("fullDatasetTSV", raw_full_rows, columns_full)
@@ -623,12 +624,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ("Self Cref Score (Gen-Gen)", "metrics.cids.metrics.cids_self_mean"),
             ("Aesthetics Score", "metrics.aesthetic.metrics.aesthetic_score"),
             ("Inception Score", "metrics.diversity.metrics.inception_score"),
-            ("Prompt Align (Scene)", "metrics.prompt_align.metrics.scene"),
-            ("Prompt Align (Camera)", "metrics.prompt_align.metrics.camera"),
-            ("Prompt Align (Character Existence|Number) OCCM", "metrics.cids.metrics.occm"),
-            ("Prompt Align (Global Character Action|Script)", "metrics.prompt_align.metrics.character_action"),
-            ("Prompt Align (Local/Single Character Action|Script)", "metrics.cids.metrics.single_character_action"),
-            ("Prompt Align Avg（Alignment score）", None),
+            ("OCCM", "metrics.cids.metrics.occm"),
+            ("Scene", "metrics.prompt_align.metrics.scene"),
+            ("Camera", "metrics.prompt_align.metrics.camera"),
+            ("Global Character Action", "metrics.prompt_align.metrics.character_action"),
+            ("Local/Single Character Action", "metrics.cids.metrics.single_character_action"),
+            ("Prompt Align Avg", None),
         ]
         text += print_tsv_js_const("liteDatasetTSV", raw_lite_rows, columns_lite)
 

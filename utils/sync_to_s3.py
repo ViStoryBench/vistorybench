@@ -6,7 +6,7 @@ import os
 import sys
 import argparse
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Optional, Tuple, Dict, Iterable, Set
 import fnmatch
 import shutil
@@ -83,6 +83,48 @@ def normalize_prefix(prefix: str) -> str:
     return p
 
 
+def _parse_src_prefix_pair_raw(value: str) -> Tuple[str, str]:
+    if not value:
+        raise ValueError("Expected SRC=PREFIX expression, got empty string.")
+    separators = ("=>", "::", "=", ":")
+    for sep in separators:
+        if sep in value:
+            left, right = value.split(sep, 1)
+            break
+    else:
+        raise ValueError(f"Invalid SRC=PREFIX expression: '{value}'")
+
+    src = left.strip()
+    prefix = right.strip()
+    if not src or not prefix:
+        raise ValueError(f"Invalid SRC=PREFIX expression (missing value): '{value}'")
+    return src, prefix
+
+
+def parse_src_prefix_pair(value: str) -> Tuple[str, str]:
+    """
+    Adapter for argparse that surfaces friendly errors.
+    """
+    try:
+        return _parse_src_prefix_pair_raw(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+
+
+def parse_src_prefix_blob(blob: str) -> List[Tuple[str, str]]:
+    pairs: List[Tuple[str, str]] = []
+    if not blob:
+        return pairs
+    normalized = blob.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.replace(",", ";")
+    for entry in normalized.replace("\n", ";").split(";"):
+        token = entry.strip()
+        if not token:
+            continue
+        pairs.append(_parse_src_prefix_pair_raw(token))
+    return pairs
+
+
 def to_posix_rel(path: Path, base: Path) -> str:
     rel = path.relative_to(base)
     return rel.as_posix()
@@ -102,6 +144,68 @@ def should_include(rel_posix: str, includes: List[str], excludes: List[str]) -> 
     return True
 
 
+def normalize_skip_dirs(skip_dirs: Iterable[str]) -> List[str]:
+    normalized: List[str] = []
+    seen: Set[str] = set()
+    for entry in skip_dirs or []:
+        if not entry:
+            continue
+        value = str(entry).strip()
+        if not value:
+            continue
+        value = value.strip("/\\")
+        if not value:
+            continue
+        name = Path(value).name
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        normalized.append(name)
+    return normalized
+
+
+def path_has_skip_dir(rel_path: Path, skip_dirs: Set[str]) -> bool:
+    if not skip_dirs:
+        return False
+    dirs = rel_path.parts[:-1]
+    if not dirs:
+        return False
+    for part in dirs:
+        if part in skip_dirs:
+            return True
+    return False
+
+
+def rel_path_has_skip_dir(rel: str, skip_dirs: Set[str]) -> bool:
+    if not skip_dirs or not rel:
+        return False
+    rel_clean = rel.strip("/")
+    if not rel_clean:
+        return False
+    parts = PurePosixPath(rel_clean).parts
+    dirs = parts[:-1]
+    if not dirs:
+        return False
+    return any(part in skip_dirs for part in dirs)
+
+
+def build_skip_globs(skip_dirs: Iterable[str]) -> List[str]:
+    globs: List[str] = []
+    seen: Set[str] = set()
+    for name in skip_dirs or []:
+        if not name:
+            continue
+        cleaned = str(name).strip()
+        if not cleaned:
+            continue
+        for pattern in (f"{cleaned}/*", f"*/{cleaned}/*"):
+            if pattern in seen:
+                continue
+            seen.add(pattern)
+            globs.append(pattern)
+    return globs
+
+
 def detect_aws_cli() -> bool:
     return shutil.which("aws") is not None
 
@@ -119,6 +223,7 @@ def build_aws_cli_sync_command(
     dry_run: bool,
     endpoint_url: Optional[str] = None,
     acl: Optional[str] = None,
+    skip_dirs: Iterable[str] = (),
 ) -> List[str]:
     prefix_norm = normalize_prefix(prefix)
     s3_uri = f"s3://{bucket}"
@@ -151,6 +256,9 @@ def build_aws_cli_sync_command(
     else:
         for pat in excludes:
             cmd += ["--exclude", pat]
+
+    for pat in build_skip_globs(skip_dirs):
+        cmd += ["--exclude", pat]
     if delete:
         cmd.append("--delete")
     if dry_run:
@@ -338,11 +446,14 @@ def needs_download(
     return False, None
 
 
-def list_local_files(src: Path, includes: List[str], excludes: List[str]) -> List[Path]:
+def list_local_files(src: Path, includes: List[str], excludes: List[str], skip_dirs: Set[str]) -> List[Path]:
     files: List[Path] = []
     for p in src.rglob("*"):
         if p.is_file():
-            rel = to_posix_rel(p, src)
+            rel_path = p.relative_to(src)
+            if path_has_skip_dir(rel_path, skip_dirs):
+                continue
+            rel = rel_path.as_posix()
             if should_include(rel, includes, excludes):
                 files.append(p)
     return files
@@ -396,6 +507,7 @@ def s3_sync_boto3(
     profile: Optional[str],
     includes: List[str],
     excludes: List[str],
+    skip_dirs: Set[str],
     delete: bool,
     checksum: bool,
     workers: int,
@@ -426,7 +538,8 @@ def s3_sync_boto3(
     )
 
     prefix_norm = normalize_prefix(prefix)
-    files = list_local_files(src, includes, excludes)
+    skip_set = skip_dirs or set()
+    files = list_local_files(src, includes, excludes, skip_set)
     stats = Stats(scanned=len(files), dry_run=dry_run)
     base_url = public_url_base.rstrip("/") if public_url_base else None
 
@@ -498,7 +611,18 @@ def s3_sync_boto3(
         else:
             try:
                 remote_keys = paginate_remote_keys(s3, bucket, prefix_norm)
-                to_delete = {k for k in remote_keys if k.startswith(prefix_norm + "/") and k not in present_keys}
+                to_delete: Set[str] = set()
+                prefix_with_slash = f"{prefix_norm}/"
+                for k in remote_keys:
+                    if not k.startswith(prefix_with_slash):
+                        continue
+                    rel = k[len(prefix_with_slash):]
+                    if not rel:
+                        continue
+                    if rel_path_has_skip_dir(rel, skip_set):
+                        continue
+                    if k not in present_keys:
+                        to_delete.add(k)
                 if not to_delete:
                     logging.info("No remote objects to delete.")
                 else:
@@ -529,6 +653,7 @@ def s3_sync_boto3_download(
     profile: Optional[str],
     includes: List[str],
     excludes: List[str],
+    skip_dirs: Set[str],
     delete: bool,
     checksum: bool,
     workers: int,
@@ -556,6 +681,7 @@ def s3_sync_boto3_download(
     )
 
     prefix_norm = normalize_prefix(prefix)
+    skip_set = skip_dirs or set()
 
     # Gather remote keys with include/exclude filtering
     remote_keys: List[str] = []
@@ -578,6 +704,8 @@ def s3_sync_boto3_download(
                 if not rel:
                     continue
                 if should_include(rel, includes, excludes):
+                    if rel_path_has_skip_dir(rel, skip_set):
+                        continue
                     remote_keys.append(key)
     except Exception as e:
         logging.error(f"Failed to list remote objects: {e}")
@@ -645,7 +773,7 @@ def s3_sync_boto3_download(
             logging.error("--delete is refused without a non-empty --prefix to protect local root.")
         else:
             try:
-                local_files = list_local_files(local, includes, excludes)
+                local_files = list_local_files(local, includes, excludes, skip_set)
                 to_delete_paths: List[Path] = []
                 for p in local_files:
                     rel = to_posix_rel(p, local)
@@ -692,7 +820,9 @@ def s3_sync_cli(
     checksum: bool,  # ignored but warn
     endpoint_url: Optional[str],
     acl: Optional[str],
+    skip_dirs: Iterable[str],
 ) -> int:
+    skip_set = set(skip_dirs or [])
     if not detect_aws_cli():
         logging.warning("aws CLI not found. Falling back to boto3 implementation.")
         if direction == "download":
@@ -713,6 +843,7 @@ def s3_sync_cli(
                 endpoint_url=endpoint_url,
                 access_key=None,
                 secret_key=None,
+                skip_dirs=skip_set,
             )
         else:
             return s3_sync_boto3(
@@ -735,6 +866,7 @@ def s3_sync_cli(
                 public_url_base=None,
                 print_urls=False,
                 acl=None,
+                skip_dirs=skip_set,
             )
     if checksum:
         logging.warning("--checksum is ignored in aws CLI mode; CLI's own comparison (size+mtime) will be used.")
@@ -748,6 +880,7 @@ def s3_sync_cli(
         profile=profile,
         includes=includes,
         excludes=excludes,
+        skip_dirs=skip_dirs,
         delete=delete,
         dry_run=dry_run,
         endpoint_url=endpoint_url,
@@ -793,6 +926,7 @@ def s3_sync_cli(
                 endpoint_url=endpoint_url,
                 access_key=None,
                 secret_key=None,
+                skip_dirs=skip_set,
             )
         else:
             return s3_sync_boto3(
@@ -815,6 +949,7 @@ def s3_sync_cli(
                 public_url_base=None,
                 print_urls=False,
                 acl=None,
+                skip_dirs=skip_set,
             )
     except Exception as e:
         logging.error(f"aws s3 sync failed: {e}")
@@ -829,10 +964,18 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--direction", choices=["upload", "download"], default="upload",
                    help="Sync direction: 'upload' (local -> S3) or 'download' (S3 -> local). Default: upload")
     # Local path
-    p.add_argument("--src", type=str, default="data/outputs",
+    p.add_argument("--src", type=str, default="data/outputs_avif",
                    help="Local directory. Acts as source for upload, destination for download. Default: data/outputs")
     p.add_argument("--bucket", type=str, default=os.getenv("AWS_S3_BUCKET", "my-vistory-bucket"), help="Target S3 bucket")
-    p.add_argument("--prefix", type=str, default="outputs", help="S3 prefix (no leading slash). Default: outputs")
+    p.add_argument("--prefix", type=str, default="outputs_avif", help="S3 prefix (no leading slash). Default: outputs")
+    p.add_argument(
+        "--src-prefix",
+        dest="src_prefix_pairs",
+        action="append",
+        type=parse_src_prefix_pair,
+        metavar="SRC=PREFIX",
+        help="Define SRC/S3 prefix pairs (format 'local_path=prefix'). Repeat to run multiple syncs. Overrides --src/--prefix when provided.",
+    )
     p.add_argument("--region", type=str, default=os.getenv("AWS_REGION", "ap-southeast-1"), help="AWS region (e.g., us-east-005)")
     p.add_argument("--profile", type=str, default=os.getenv("AWS_PROFILE", "default"), help="AWS profile name (default: default)")
     p.add_argument("--endpoint", type=str, default=(os.getenv("AWS_S3_ENDPOINT") or os.getenv("S3_ENDPOINT") or os.getenv("B2_ENDPOINT") or os.getenv("ENDPOINT")), help="S3-compatible endpoint URL (e.g., https://s3.us-east-005.backblazeb2.com)")
@@ -847,13 +990,14 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     # Filters
     p.add_argument("--include", action="append", default=[], help='Include glob (relative POSIX path). Can be repeated')
     p.add_argument("--exclude", action="append", default=[], help='Exclude glob (relative POSIX path). Can be repeated')
+    p.add_argument("--skip", action="append", default=['.cache'], help='Skip directories by name (matches any folder segment). Can be repeated')
 
     # Public URL output (boto3 upload mode only)
     p.add_argument("--public-url-base", type=str, default=(os.getenv("S3_PUBLIC_BASE_URL") or os.getenv("PUBLIC_URL_BASE") or os.getenv("CUSTOM_DOMAIN") or os.getenv("CUSTOM_BASE_URL")), help="Base URL used to print public links for uploaded keys (e.g., https://img.blenet.top)")
     p.add_argument("--print-urls", action="store_true", help="Print public URLs of uploaded files (requires --public-url-base; boto3 upload mode only)")
 
     # Concurrency and transfer (boto3 mode)
-    p.add_argument("--workers", type=int, default=8, help="Concurrent transfers for boto3 mode (default: 8)")
+    p.add_argument("--workers", type=int, default=256, help="Concurrent transfers for boto3 mode (default: 8)")
     p.add_argument("--multipart-threshold", type=int, default=8 * 1024 * 1024, help="Multipart threshold in bytes (default: 8MB)")
     p.add_argument("--multipart-chunk-size", type=int, default=8 * 1024 * 1024, help="Multipart chunk size in bytes (default: 8MB)")
 
@@ -868,6 +1012,111 @@ def guess_outputs_root(base: Path) -> Path:
     if (base / "outputs").is_dir():
         return base / "outputs"
     return base
+
+
+def run_sync_for_pair(
+    *,
+    pair_idx: int,
+    pair_total: int,
+    args: argparse.Namespace,
+    local_path: str,
+    prefix_value: str,
+    bucket: str,
+    region: Optional[str],
+    profile: Optional[str],
+    endpoint_url: Optional[str],
+    skip_dirs: List[str],
+    skip_set: Set[str],
+    access_key_env: Optional[str],
+    secret_key_env: Optional[str],
+) -> int:
+    pair_tag = f"[Pair {pair_idx}/{pair_total}]"
+    prefix_norm = normalize_prefix(prefix_value)
+    local_base = Path(local_path)
+    if args.direction == "upload":
+        local_base = guess_outputs_root(local_base)
+        if not local_base.exists() or not local_base.is_dir():
+            logging.error(f"{pair_tag} Source directory does not exist: {local_base}")
+            return 2
+    else:
+        if not local_base.exists():
+            try:
+                local_base.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logging.error(f"{pair_tag} Failed to create destination directory {local_base}: {e}")
+                return 2
+        elif not local_base.is_dir():
+            logging.error(f"{pair_tag} Destination path is not a directory: {local_base}")
+            return 2
+
+    s3_display = f"s3://{bucket}/{prefix_norm}" if prefix_norm else f"s3://{bucket}"
+    if args.direction == "upload":
+        logging.info(f"{pair_tag} Sync plan: {local_base} -> {s3_display}")
+    else:
+        logging.info(f"{pair_tag} Sync plan: {s3_display} -> {local_base}")
+
+    if args.use_cli:
+        rc = s3_sync_cli(
+            direction=args.direction,
+            local=local_base,
+            bucket=bucket,
+            prefix=prefix_norm,
+            region=region,
+            profile=profile,
+            includes=args.include or [],
+            excludes=args.exclude or [],
+            delete=args.delete,
+            dry_run=args.dry_run,
+            checksum=args.checksum,
+            endpoint_url=endpoint_url,
+            acl=args.acl,
+            skip_dirs=skip_dirs,
+        )
+    else:
+        if args.direction == "upload":
+            rc = s3_sync_boto3(
+                src=local_base,
+                bucket=bucket,
+                prefix=prefix_norm,
+                region=region,
+                profile=profile,
+                includes=args.include or [],
+                excludes=args.exclude or [],
+                delete=args.delete,
+                checksum=args.checksum,
+                workers=max(1, int(args.workers or 1)),
+                dry_run=args.dry_run,
+                multipart_threshold=max(5 * 1024 * 1024, int(args.multipart_threshold or (8 * 1024 * 1024))),
+                multipart_chunksize=max(5 * 1024 * 1024, int(args.multipart_chunk_size or (8 * 1024 * 1024))),
+                endpoint_url=endpoint_url,
+                access_key=access_key_env,
+                secret_key=secret_key_env,
+                public_url_base=args.public_url_base,
+                print_urls=args.print_urls,
+                acl=args.acl,
+                skip_dirs=skip_set,
+            )
+        else:
+            rc = s3_sync_boto3_download(
+                local=local_base,
+                bucket=bucket,
+                prefix=prefix_norm,
+                region=region,
+                profile=profile,
+                includes=args.include or [],
+                excludes=args.exclude or [],
+                delete=args.delete,
+                checksum=args.checksum,
+                workers=max(1, int(args.workers or 1)),
+                dry_run=args.dry_run,
+                multipart_threshold=max(5 * 1024 * 1024, int(args.multipart_threshold or (8 * 1024 * 1024))),
+                multipart_chunksize=max(5 * 1024 * 1024, int(args.multipart_chunk_size or (8 * 1024 * 1024))),
+                endpoint_url=endpoint_url,
+                access_key=access_key_env,
+                secret_key=secret_key_env,
+                skip_dirs=skip_set,
+            )
+    return rc
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -889,6 +1138,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     access_key_env = get_env_with_aliases(["AWS_ACCESS_KEY_ID", "AWS_ACCESS_KEY", "KEY_ID", "keyID"])
     secret_key_env = get_env_with_aliases(["AWS_SECRET_ACCESS_KEY", "AWS_SECRET_KEY", "APPLICATION_KEY", "applicationKey"])
     public_url_env = get_env_with_aliases(["S3_PUBLIC_BASE_URL", "PUBLIC_URL_BASE", "CUSTOM_DOMAIN", "CUSTOM_BASE_URL"])
+    src_prefix_env = get_env_with_aliases(["SRC_PREFIX_PAIRS", "SRC_PREFIX_DEFAULTS", "SYNC_SRC_PREFIX_PAIRS"])
 
     if bucket_env:
         args.bucket = bucket_env
@@ -913,31 +1163,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.public_url_base and not os.getenv("S3_PUBLIC_BASE_URL"):
         os.environ["S3_PUBLIC_BASE_URL"] = args.public_url_base
 
-    local_base = Path(args.src)
-    if args.direction == "upload":
-        local_base = guess_outputs_root(local_base)
-        if not local_base.exists() or not local_base.is_dir():
-            logging.error(f"Source directory does not exist: {local_base}")
-            return 2
-    else:
-        # download mode ensures destination directory exists
-        if not local_base.exists():
-            try:
-                local_base.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                logging.error(f"Failed to create destination directory {local_base}: {e}")
-                return 2
-        elif not local_base.is_dir():
-            logging.error(f"Destination path is not a directory: {local_base}")
-            return 2
-
     bucket = args.bucket
     if not bucket:
         logging.error("Missing --bucket.")
         return 2
 
-    # Normalize prefix (allow empty)
-    prefix_norm = normalize_prefix(args.prefix)
+    skip_dirs = normalize_skip_dirs(args.skip or [])
+    skip_set = set(skip_dirs)
+
+    env_src_prefix_pairs: List[Tuple[str, str]] = []
+    if src_prefix_env:
+        try:
+            env_src_prefix_pairs = parse_src_prefix_blob(src_prefix_env)
+        except ValueError as e:
+            logging.error(f"Failed to parse SRC/PREFIX pairs from environment: {e}")
+            return 2
 
     # Resolve profile and region (allow environment to override)
     region = args.region or os.getenv("AWS_REGION")
@@ -950,80 +1190,46 @@ def main(argv: Optional[List[str]] = None) -> int:
             logging.info("Environment/.env credentials detected; ignoring AWS profile.")
         profile = None
 
-    if args.direction == "upload":
-        logging.info(f"Sync plan: {local_base} -> s3://{bucket}/{prefix_norm if prefix_norm else ''}")
+    pairs: List[Tuple[str, str]]
+    if args.src_prefix_pairs:
+        pairs = list(args.src_prefix_pairs)
+    elif env_src_prefix_pairs:
+        pairs = env_src_prefix_pairs
     else:
-        logging.info(f"Sync plan: s3://{bucket}/{prefix_norm if prefix_norm else ''} -> {local_base}")
+        pairs = [(args.src, args.prefix)]
+
+    logging.info(f"Preparing {len(pairs)} sync pair(s).")
+
     logging.info(
         f"mode={'aws-cli' if args.use_cli and detect_aws_cli() else 'boto3'} "
         f"direction={args.direction} region={region} endpoint={endpoint_url or ''} profile={profile} delete={args.delete} checksum={args.checksum} dry_run={args.dry_run}"
     )
 
-    # Execute
-    if args.use_cli:
-        if args.print_urls:
-            logging.warning("--print-urls is only supported in boto3 upload mode; will be ignored.")
-        rc = s3_sync_cli(
-            direction=args.direction,
-            local=local_base,
+    if args.use_cli and args.print_urls:
+        logging.warning("--print-urls is only supported in boto3 upload mode; will be ignored.")
+    if (not args.use_cli) and args.direction != "upload" and args.print_urls:
+        logging.warning("--print-urls is only supported in boto3 upload mode; ignoring for download.")
+
+    overall_rc = 0
+    for idx, (src_value, prefix_value) in enumerate(pairs, start=1):
+        rc = run_sync_for_pair(
+            pair_idx=idx,
+            pair_total=len(pairs),
+            args=args,
+            local_path=src_value,
+            prefix_value=prefix_value,
             bucket=bucket,
-            prefix=prefix_norm,
             region=region,
             profile=profile,
-            includes=args.include or [],
-            excludes=args.exclude or [],
-            delete=args.delete,
-            dry_run=args.dry_run,
-            checksum=args.checksum,
             endpoint_url=endpoint_url,
-            acl=args.acl,
+            skip_dirs=skip_dirs,
+            skip_set=skip_set,
+            access_key_env=access_key_env,
+            secret_key_env=secret_key_env,
         )
-    else:
-        if args.direction == "upload":
-            rc = s3_sync_boto3(
-                src=local_base,
-                bucket=bucket,
-                prefix=prefix_norm,
-                region=region,
-                profile=profile,
-                includes=args.include or [],
-                excludes=args.exclude or [],
-                delete=args.delete,
-                checksum=args.checksum,
-                workers=max(1, int(args.workers or 1)),
-                dry_run=args.dry_run,
-                multipart_threshold=max(5 * 1024 * 1024, int(args.multipart_threshold or (8 * 1024 * 1024))),
-                multipart_chunksize=max(5 * 1024 * 1024, int(args.multipart_chunk_size or (8 * 1024 * 1024))),
-                endpoint_url=endpoint_url,
-                access_key=access_key_env,
-                secret_key=secret_key_env,
-                public_url_base=args.public_url_base,
-                print_urls=args.print_urls,
-                acl=args.acl,
-            )
-        else:
-            if args.print_urls:
-                logging.warning("--print-urls is only supported in boto3 upload mode; ignoring for download.")
-            rc = s3_sync_boto3_download(
-                local=local_base,
-                bucket=bucket,
-                prefix=prefix_norm,
-                region=region,
-                profile=profile,
-                includes=args.include or [],
-                excludes=args.exclude or [],
-                delete=args.delete,
-                checksum=args.checksum,
-                workers=max(1, int(args.workers or 1)),
-                dry_run=args.dry_run,
-                multipart_threshold=max(5 * 1024 * 1024, int(args.multipart_threshold or (8 * 1024 * 1024))),
-                multipart_chunksize=max(5 * 1024 * 1024, int(args.multipart_chunk_size or (8 * 1024 * 1024))),
-                endpoint_url=endpoint_url,
-                access_key=access_key_env,
-                secret_key=secret_key_env,
-            )
-
-    return rc
+        if rc != 0:
+            overall_rc = rc
+    return overall_rc
 
 
 if __name__ == "__main__":

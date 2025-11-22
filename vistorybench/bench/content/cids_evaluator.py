@@ -13,7 +13,7 @@ from .inception_resnet_v1 import InceptionResnetV1
 import sys
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
 import scipy.optimize
-from transformers import CLIPProcessor, CLIPModel, AutoImageProcessor, Dinov2Model
+from transformers import CLIPProcessor, CLIPModel
 from pathlib import Path
 
 from vistorybench.bench.base_evaluator import BaseEvaluator
@@ -181,21 +181,6 @@ class CIDSEvaluator(BaseEvaluator):
             self.clip = None
             self.clip_processor = None
 
-        # Load DINOv2 (for copy-paste embedding similarity)
-        try:
-            dinov2_model_id = "facebook/dinov2-base"
-            if isinstance(self.cids_cfg, dict):
-                enc = self.cids_cfg.get('encoders')
-                if isinstance(enc, dict) and 'dinov2' in enc and 'model_id' in enc['dinov2']:
-                    dinov2_model_id = enc['dinov2']['model_id']
-            self.dinov2_model = Dinov2Model.from_pretrained(pretrain_path / dinov2_model_id).to(device)
-            self.dinov2_processor = AutoImageProcessor.from_pretrained(pretrain_path / dinov2_model_id)
-            print("DINOv2 model loaded successfully")
-        except Exception as e:
-            print(f"Could not load DINOv2 model: {e}")
-            self.dinov2_model = None
-            self.dinov2_processor = None
-
         # Load ArcFace
         try:
             arc_name = "antelopev2"
@@ -350,23 +335,6 @@ class CIDSEvaluator(BaseEvaluator):
                 image_features = F.normalize(image_features, p=2, dim=1)
             else:
                 image_features = None
-
-        elif encoder_name == "dinov2":
-            if getattr(self, "dinov2_model", None) is None or getattr(self, "dinov2_processor", None) is None:
-                image_features = None
-            else:
-                try:
-                    inputs = self.dinov2_processor(images=img, return_tensors="pt")
-                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                    pixel_values = inputs["pixel_values"]
-                    with torch.no_grad():
-                        outputs = self.dinov2_model(pixel_values=pixel_values)
-                    # Use CLS token as global image embedding
-                    feats = outputs.last_hidden_state[:, 0, :]  # [B, D]
-                    image_features = F.normalize(feats, p=2, dim=1)
-                except Exception as _e:
-                    print(f"\033[33mWarning: DINOv2 feature extraction failed: {_e}\033[0m")
-                    image_features = None
 
         elif encoder_name == "face_mix":
             all_multi_features = []
@@ -673,15 +641,6 @@ class CIDSEvaluator(BaseEvaluator):
             assert ref_feats is not None, f"Cant get ref char: {char}, please check. No valid reference images found."
             ref_clip_feats[char] = ref_feats
 
-            # Build DINOv2 reference features for copy-paste metric
-            try:
-                ref_dino = self.get_char_feat(input_ref_imgs, encoder_name="dinov2") if len(input_ref_imgs) > 0 else None
-                if ref_dino is None and len(ref_imgs) > 0:
-                    ref_dino = self.get_char_feat([Image.open(x) for x in ref_imgs], encoder_name="dinov2")
-            except Exception as _e:
-                print(f"\033[33mWarning: failed to compute DINOv2 ref features for {char}: {_e}\033[0m")
-                ref_dino = None
-            ref_dino_feats[char] = ref_dino
 
         results = {"cids": {}}
         char_pil_imgs = {}
@@ -903,30 +862,24 @@ class CIDSEvaluator(BaseEvaluator):
                     self_sim = 1.0
                 results["cids"].update({char: {"cross": round(cross_sim, 4), "self": round(self_sim, 4)}})
 
-                # 使用 DINOv2 embedding 进行 copy-paste 评分
-                ref_dino = ref_dino_feats.get(char, None)
-                ref_count = (len(ref_dino) if isinstance(ref_dino, list) else (ref_dino.shape[0] if isinstance(ref_dino, torch.Tensor) else 0))
-                if ref_dino is not None and ref_count > 1:
+                ref_count = len(ref_clip_feats[char]) if isinstance(ref_clip_feats[char], list) else ref_clip_feats[char].shape[0]
+                if ref_count > 1:
                     copy_paste_cnt += 1
-                    dino_char_feats = self.get_char_feat(char_pil_imgs[char], encoder_name="dinov2")
-                    if dino_char_feats is None:
-                        copy_paste_cnt -= 1
+                    cross_sims = self._compute_multimodel_similarity_matrix(
+                        char_feats, ref_clip_feats[char], method=self.ensemble_method
+                    )  # [G, R]
+                    if cross_sims.shape[1] > 1:
+                        # t = ref[0], r = ref[1:]
+                        s_gt = torch.clamp(cross_sims[:, 0], -1.0, 1.0)       # [G]
+                        s_gr = torch.clamp(cross_sims[:, 1:], -1.0, 1.0)       # [G, R-1]
+                        all_sims = torch.cat([s_gt.unsqueeze(1), s_gr], dim=1)  # [G, R]
+                        T = 0.01
+                        probs = torch.softmax(all_sims / T, dim=1)              # [G, R]
+                        copy_scores = probs[:, 0]                                # [G]
+                        char_copy_rate = copy_scores.mean().item()
+                        shot_copy_paste_score += char_copy_rate
                     else:
-                        cross_sims = self._compute_multimodel_similarity_matrix(
-                            dino_char_feats, ref_dino, method=self.ensemble_method
-                        )  # [G, R]
-                        if cross_sims.shape[1] > 1:
-                            # t = ref[0], r = ref[1:]
-                            s_gt = torch.clamp(cross_sims[:, 0], -1.0, 1.0)       # [G]
-                            s_gr = torch.clamp(cross_sims[:, 1:], -1.0, 1.0)       # [G, R-1]
-                            all_sims = torch.cat([s_gt.unsqueeze(1), s_gr], dim=1)  # [G, R]
-                            T = 0.01
-                            probs = torch.softmax(all_sims / T, dim=1)              # [G, R]
-                            copy_scores = probs[:, 0]                                # [G]
-                            char_copy_rate = copy_scores.mean().item()
-                            shot_copy_paste_score += char_copy_rate
-                        else:
-                            copy_paste_cnt -= 1
+                        copy_paste_cnt -= 1
             else:
                 results["cids"].update({char: {"cross": 0.0, "self": 0.0}})
 
