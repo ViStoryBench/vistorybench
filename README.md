@@ -5,7 +5,8 @@
   <a href="https://huggingface.co/datasets/ViStoryBench/ViStoryBench"><img src="https://img.shields.io/static/v1?label=Dataset&message=HuggingFace&color=orange"></a> &ensp;
   <a href="https://vistorybench.github.io/story_detail/"><img src="https://img.shields.io/static/v1?label=Browse%20Results&message=Web&color=green"></a> &ensp;
 <!-- ![image](https://github.com/user-attachments/assets/461d95ca-51cf-4b16-a584-be5b36c904db) -->
-![ViStoryBench Overview](assets/overview.png)
+
+![ViStoryBench Overview](assets/teaser.png)
 
 <p><b>ViStoryBench</b> introduces a comprehensive and diverse benchmark for story visualization, enabling thorough evaluation of models across narrative complexity, character consistency, and visual style.</p>
 
@@ -58,6 +59,8 @@ https://pytorch.org/get-started/previous-versions/
 ## <span style="color: orange">1. Dataset Preparation🐻</span>
 
 ### 1.1. About ViStory Dataset
+
+![ViStoryBench Dataset Overview](assets/overview.png)
 
 > **80** stories and **344** characters, both *Chinese* and *English*,
 >
@@ -372,7 +375,7 @@ Notes:
 - PromptAlign API key is read from env var VISTORYBENCH_API_KEY or via --api_key.
 - CLI --base_url and --model_id override evaluators.prompt_align.gpt.base_url/model per run without changing YAML.
 
-** Create and Configure the `.env` File **
+**Create and Configure the `.env` File**
 
 For security best practices, your API key should be stored in an environment file rather than being hardcoded. The `ViStoryBench` project is designed to read this sensitive information from a `.env` file.
 
@@ -397,7 +400,7 @@ For security best practices, your API key should be stored in an environment fil
 
     # The model ID you wish to use for evaluations.
     # This can also be set in config.yaml.
-    MODEL_ID="gpt-4o"
+    MODEL_ID="gpt-4.1"
 
     # [REQUIRED] Your API Key.
     # Replace "sk-..." with your actual secret key.
