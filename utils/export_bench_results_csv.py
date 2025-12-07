@@ -46,7 +46,7 @@ sys.path.insert(0, project_root)
 
 FRONT_COLS = ["method", "model", "mode", "timestamp"]
 
-LITE_METHODs=['Sora2']
+LITE_METHODs=['NanoBanana']
 FULL_METHODs=[]
 # LITE_METHODs=['Seedream4','CharaConsist','QwenImageEdit2509','GPT4o','Gemini','NaiveBaseline','OmniGen2','NanoBanana','StoryDiffusion', 'StoryAdapter', 'StoryGen', 'UNO', 'TheaterGen', 'SeedStory', 'Vlogger', 'MovieAgent', 'AnimDirector', 'MMStoryAgent', 'MOKI', 'MorphicStudio', 'AIbrm', 'ShenBi', 'TypeMovie', 'DouBao']
 # FULL_METHODs=['CharaConsist','QwenImageEdit2509','NaiveBaseline','OmniGen2','StoryDiffusion', 'StoryAdapter', 'StoryGen', 'UNO', 'TheaterGen', 'SeedStory', 'Vlogger', 'MovieAgent', 'AnimDirector', 'MMStoryAgent']

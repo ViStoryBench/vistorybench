@@ -5,6 +5,7 @@ from itertools import combinations
 import numpy as np
 import torch.nn.functional as F
 import time
+from collections import OrderedDict
 try:
     import torchvision.transforms.v2 as T
 except ImportError:
@@ -32,17 +33,35 @@ class CSDEvaluator(BaseEvaluator):
         super().__init__(config, timestamp, mode, language, outputs_timestamp)
         self.device = torch.device(self.get_device())
         csd_model_path = os.path.join(self.pretrain_path, 'csd/csd_vit-large.pth')
+        self.csd_cfg = self.get_evaluator_config('csd') or {}
+        self.csd_cache_limit = int(self.csd_cfg.get('cache_limit', 20))
 
         self.csd_size = 224
         self.csd_mean = [0.48145466, 0.4578275, 0.40821073]
         self.csd_std = [0.26862954, 0.26130258, 0.27577711]
 
         self.csd_encoder = load_csd(csd_model_path).to(self.device)
+        self._image_tensor_cache: OrderedDict[str, torch.Tensor] = OrderedDict()
+        self._image_embed_cache: OrderedDict[str, torch.Tensor] = OrderedDict()
 
     def _preprocess(self, image: Image.Image) -> torch.Tensor:
         image_array = np.array(image).astype(np.float32) / 255.0
-        tensor = torch.from_numpy(image_array).to(self.device)[None,...].permute(0,3,1,2)
+        tensor = torch.from_numpy(image_array)[None,...].permute(0,3,1,2)
         return tensor.detach()
+
+    def _cache_put(self, cache: OrderedDict, key: str, value: torch.Tensor):
+        cache[key] = value
+        if self.csd_cache_limit > 0:
+            while len(cache) > self.csd_cache_limit:
+                cache.popitem(last=False)
+
+    def _get_image_tensor(self, image_path: str) -> torch.Tensor:
+        tensor = self._image_tensor_cache.get(image_path)
+        if tensor is None:
+            img = Image.open(image_path).convert('RGB')
+            tensor = self._preprocess(img)
+            self._cache_put(self._image_tensor_cache, image_path, tensor)
+        return tensor
 
     def _encode(self, image_tensor):
         preprocess = T.Compose([
@@ -50,19 +69,21 @@ class CSDEvaluator(BaseEvaluator):
             T.Normalize(tuple(self.csd_mean),
                         tuple(self.csd_std)),
         ])
-        input_image_tensor = preprocess(image_tensor).to(device=image_tensor.device, dtype=torch.float32)
+        input_image_tensor = preprocess(image_tensor).to(device=self.device, dtype=torch.float32)
         image_embeds = self.csd_encoder(input_image_tensor)['style']
         return image_embeds
 
+    def _get_image_embed(self, image_path: str) -> torch.Tensor:
+        embed = self._image_embed_cache.get(image_path)
+        if embed is None:
+            tensor = self._get_image_tensor(image_path)
+            embed = self._encode(tensor).detach().cpu()
+            self._cache_put(self._image_embed_cache, image_path, embed)
+        return embed.clone()  # return a tensor decoupled from cache
+
     def _get_csd_score(self, img1_path, img2_path):
-        img1 = Image.open(img1_path).convert('RGB')
-        img2 = Image.open(img2_path).convert('RGB')
-
-        tensor1 = self._preprocess(img1)
-        tensor2 = self._preprocess(img2)
-
-        embed1 = self._encode(tensor1)
-        embed2 = self._encode(tensor2)
+        embed1 = self._get_image_embed(img1_path)
+        embed2 = self._get_image_embed(img2_path)
 
         cos_sim = F.cosine_similarity(embed1, embed2, dim=-1)
         return cos_sim.mean().item()
@@ -73,7 +94,7 @@ class CSDEvaluator(BaseEvaluator):
             methods=[method],
             modes=[self.mode],
             languages=[self.language],
-            timestamps=[self.outputs_timestamp],
+            timestamps=self.outputs_timestamp,
             return_latest=False
         )
         story_outputs = all_outputs.get(story_id)
@@ -143,41 +164,67 @@ class CSDEvaluator(BaseEvaluator):
         total_ri_score = []
         shot_details = []
 
-        for i, (shot_info, output_img_path) in enumerate(zip(story_data['shots'], outputs_data['shots'].values())):
-            
-            characters = story_data["characters"]
-            char_key = shot_info['character_key']
-            if char_key:
-                char_info = characters[char_key[0]]
-                # Always select the first image of the character (e.g., 00.png)
-                if char_info['images']:
-                    char_ref_image = char_info['images'][0]
-                else:
-                    # Fallback if character has no images
-                    characters_1_key = list(characters.keys())[0]
-                    char_info = characters[characters_1_key]
-                    char_ref_image = char_info['images'][0]
-            else:
-                # Fallback if shot has no character
-                characters_1_key = list(characters.keys())[0]
-                char_info = characters[characters_1_key]
-                char_ref_image = char_info['images'][0]
+        characters = story_data["characters"]
+        outputs_shots = outputs_data.get('shots') or {}
+
+        def _pick_reference_image(target_key=None):
+            if target_key and target_key in characters:
+                imgs = characters[target_key].get('images') or []
+                if imgs:
+                    return target_key, imgs[0]
+            for fallback_key, info in characters.items():
+                imgs = info.get('images') or []
+                if imgs:
+                    return fallback_key, imgs[0]
+            return None, None
+
+        for shot_info in story_data['shots']:
+            shot_index = int(shot_info['index'])
+            output_img_path = outputs_shots.get(shot_index) or outputs_shots.get(str(shot_index))
+            if not output_img_path:
+                continue
 
             start_time = time.time()
-            csd_score = self._get_csd_score(char_ref_image, output_img_path)
+            per_char_scores = []
+            for char_key in shot_info.get('character_key', []):
+                selected_key, ref_image = _pick_reference_image(char_key)
+                if not ref_image:
+                    continue
+                score = self._get_csd_score(ref_image, output_img_path)
+                per_char_scores.append({
+                    "character_key": selected_key,
+                    "ref_image": ref_image,
+                    "score": score
+                })
+
+            if not per_char_scores:
+                # Fallback to any available character reference if the shot has no characters/images
+                selected_key, ref_image = _pick_reference_image()
+                if ref_image:
+                    score = self._get_csd_score(ref_image, output_img_path)
+                    per_char_scores.append({
+                        "character_key": selected_key,
+                        "ref_image": ref_image,
+                        "score": score
+                    })
+
+            if not per_char_scores:
+                continue
+
+            shot_score = sum(item["score"] for item in per_char_scores) / len(per_char_scores)
             end_time = time.time()
             elapsed_time = end_time - start_time
 
-            # Record shot details
             shot_details.append({
-                "index": shot_info['index'],
-                "score": csd_score,
-                "ref_image": char_ref_image,
+                "index": shot_index,
+                "score": shot_score,
+                "ref_image": per_char_scores[0]["ref_image"],
                 "gen_image": output_img_path,
-                "elapsed_time(seconds)": elapsed_time
+                "elapsed_time(seconds)": elapsed_time,
+                "character_scores": per_char_scores
             })
 
-            total_ri_score.append(csd_score)
+            total_ri_score.append(shot_score)
 
         average_ri_csd = 0.0
         # Calculate and print average score (need at least two images)

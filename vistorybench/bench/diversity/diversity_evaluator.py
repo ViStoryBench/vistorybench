@@ -29,6 +29,7 @@ class DiversityEvaluator(BaseEvaluator):
         self,
         method: str,
         story_outputs: Optional[Dict[str, Dict[str, List[str]]]] = None,
+        timestamp_filter: Optional[str] = None,
     ) -> List[str]:
         """Collect all shot image paths for the specified combination."""
         if story_outputs is None:
@@ -37,13 +38,13 @@ class DiversityEvaluator(BaseEvaluator):
             methods=[method],
             modes=[self.mode],
             languages=[self.language],
-            timestamps=[self.outputs_timestamp],
+            timestamps=timestamp_filter if timestamp_filter is not None else self.outputs_timestamp,
             return_latest=False
         )
 
         image_paths: List[str] = []
         for story_id, data in story_outputs.items():
-            shots = data.get("shots") if isinstance(data, dict) else None
+            shots = data.get("shots").values() if isinstance(data, dict) else None
             if not shots:
                 print(f"Warning: No shots found for story '{story_id}' when collecting diversity inputs.")
                 continue
@@ -76,6 +77,7 @@ class DiversityEvaluator(BaseEvaluator):
             timestamp
             or kwargs.get("timestamp")
             or self.get_cli_arg("timestamp")
+            or self.outputs_timestamp
         )
 
         print(
@@ -88,6 +90,7 @@ class DiversityEvaluator(BaseEvaluator):
         image_paths = self._collect_image_paths(
             method,
             story_outputs=prefetched_outputs,
+            timestamp_filter=timestamp,
         )
 
         if not image_paths:
@@ -103,7 +106,7 @@ class DiversityEvaluator(BaseEvaluator):
         )
         
         is_mean, is_std = calculate_inception_score(
-            image_paths.values(),
+            image_paths,
             batch_size=self.is_batch_size,
             splits=self.is_splits,
             device=self.device
@@ -113,4 +116,5 @@ class DiversityEvaluator(BaseEvaluator):
 
         return {
             'inception_score': is_mean,
+            'inception_score_std': is_std,
         }

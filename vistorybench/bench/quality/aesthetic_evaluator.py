@@ -56,7 +56,7 @@ class AestheticEvaluator(BaseEvaluator):
             methods=[method],
             modes=[self.mode],
             languages=[self.language],
-            timestamps=[self.outputs_timestamp],
+            timestamps=self.outputs_timestamp,
             return_latest=False
         )
         story_outputs = all_outputs.get(story_id)
@@ -65,7 +65,7 @@ class AestheticEvaluator(BaseEvaluator):
             print(f"Warning: No images found for story {story_id}, method {method}")
             return {"metrics": {"aesthetic_score": 0}, "per_image_scores": []}
 
-        image_paths = story_outputs["shots"].values()
+        image_paths = story_outputs.get("shots") or {}
         
         per_image_scores = []
         if not image_paths:
@@ -75,9 +75,13 @@ class AestheticEvaluator(BaseEvaluator):
             total_score = 0
             image_count = 0
 
-            for image_path in image_paths:
+            for shot_id, image_path in sorted(image_paths.items()):
+                try:
+                    resolved_shot = int(shot_id)
+                except (TypeError, ValueError):
+                    resolved_shot = shot_id
                 score = self.get_aesthetic_score(image_path)
-                per_image_scores.append(score)
+                per_image_scores.append({"shot_index": resolved_shot, "score": score})
                 total_score += score
                 image_count += 1
             
@@ -93,10 +97,18 @@ class AestheticEvaluator(BaseEvaluator):
                 per_scores = story_result.get("per_image_scores")
                 if isinstance(per_scores, list):
                     for idx, score in enumerate(per_scores):
+                        if isinstance(score, dict):
+                            shot_idx = score.get("shot_index", idx)
+                            val = score.get("score")
+                        else:
+                            shot_idx = idx
+                            val = score
+                        if val is None:
+                            continue
                         item = {
                             "metric": {"name": "aesthetic", "submetric": "aesthetic_score"},
-                            "scope": {"level": "item", "story_id": str(story_id), "shot_index": idx},
-                            "value": score,
+                            "scope": {"level": "item", "story_id": str(story_id), "shot_index": shot_idx},
+                            "value": val,
                             "status": "complete",
                         }
                         items.append(item)

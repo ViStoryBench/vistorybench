@@ -297,13 +297,22 @@ class CIDSEvaluator(BaseEvaluator):
             print(f"FaceNet feature extraction failed: {e}")
         return None
 
-    def get_char_feat(self, img: Image.Image | list[Image.Image], encoder_name="arcface", det_thresh = None) -> torch.Tensor:
+    def get_char_feat(
+        self,
+        img: Image.Image | list[Image.Image],
+        encoder_name="arcface",
+        det_thresh=None,
+        return_indices: bool = False,
+    ) -> torch.Tensor:
         if not isinstance(img, list):
             img = [img]
 
         if len(img) == 0:
             print("\033[33mWarning: Empty image list provided to get_char_feat\033[0m")
             return None
+
+        total_imgs = len(img)
+        valid_indices = list(range(total_imgs))
 
         if encoder_name == "clip":
             inputs = self.clip_processor(images=img, return_tensors='pt', padding=True)
@@ -316,7 +325,8 @@ class CIDSEvaluator(BaseEvaluator):
         elif encoder_name == "arcface":
             curr_thresh = det_thresh if det_thresh is not None else self.arcface_det_thresh_initial
             image_features = []
-            for _img in img:
+            valid_indices = []
+            for idx, _img in enumerate(img):
                 _img_np = cv2.cvtColor(np.array(_img), cv2.COLOR_RGB2BGR)
                 while(True):
                     if curr_thresh < self.arcface_det_thresh_min:
@@ -325,6 +335,7 @@ class CIDSEvaluator(BaseEvaluator):
                     _img_faces = self.arcface.get(_img_np)
                     if len(_img_faces) > 0:
                         image_features.append(torch.from_numpy(_img_faces[0].embedding))
+                        valid_indices.append(idx)
                         break
                     else:
                         _img.save(f"{self.mid_result_dir}/bad_case.png")
@@ -338,8 +349,9 @@ class CIDSEvaluator(BaseEvaluator):
 
         elif encoder_name == "face_mix":
             all_multi_features = []
+            valid_indices = []
             
-            for _img in img:
+            for idx, _img in enumerate(img):
                 _img_np = cv2.cvtColor(np.array(_img), cv2.COLOR_RGB2BGR)
                 model_features = {}
                 
@@ -366,6 +378,7 @@ class CIDSEvaluator(BaseEvaluator):
                 if model_features:
                     multi_feat = MultiModelFeatures(model_features)
                     all_multi_features.append(multi_feat)
+                    valid_indices.append(idx)
             
             if all_multi_features:
                 image_features = all_multi_features
@@ -373,6 +386,10 @@ class CIDSEvaluator(BaseEvaluator):
                 image_features = None
         else:
             raise NotImplementedError
+
+        if return_indices:
+            indices = valid_indices if image_features is not None else []
+            return image_features, indices
 
         return image_features
 
@@ -518,22 +535,25 @@ class CIDSEvaluator(BaseEvaluator):
             empty_phrases = []
             return empty_boxes, empty_logits, empty_phrases, None
 
-    def crop_img(self, img_src: str, boxes) -> list[Image.Image]:
+    def crop_img(self, img_src: str, boxes, return_boxes: bool = False):
         try:
             if not os.path.exists(img_src):
                 print(f"\033[31mError: Image file not found for cropping: {img_src}\033[0m")
-                return []
+                return ([] , []) if return_boxes else []
             
             if len(boxes) == 0:
-                return []
+                return ([] , []) if return_boxes else []
                 
             img_source = Image.open(img_src)
             w, h = img_source.size
+            boxes = boxes.to('cpu')
+            orig_boxes = boxes.clone()
             boxes = (boxes * torch.Tensor([w, h, w, h])).int()
             xyxy = box_convert(boxes=boxes, in_fmt="cxcywh", out_fmt="xyxy").numpy()
 
             cropped_images = []
-            for box in xyxy:
+            filtered_boxes = []
+            for idx, box in enumerate(xyxy):
                 try:
                     x_min, y_min, x_max, y_max = box.tolist()
                     x_min = max(0, min(x_min, w))
@@ -544,13 +564,17 @@ class CIDSEvaluator(BaseEvaluator):
                     if x_max > x_min and y_max > y_min:
                         cropped = img_source.crop((x_min, y_min, x_max, y_max))
                         cropped_images.append(cropped)
+                        if return_boxes:
+                            filtered_boxes.append(orig_boxes[idx].tolist())
                 except Exception as e:
                     print(f"\033[33mWarning: Failed to crop box {box}: {str(e)}\033[0m")
                     continue
+            if return_boxes:
+                return cropped_images, filtered_boxes
             return cropped_images
         except Exception as e:
             print(f"\033[31mError in crop_img for {img_src}: {str(e)}\033[0m")
-            return []
+            return ([] , []) if return_boxes else []
 
     def evaluate(self, method: str, story_id: str, **kwargs):
 
@@ -570,7 +594,7 @@ class CIDSEvaluator(BaseEvaluator):
             methods=[method],
             modes=[self.mode],
             languages=[self.language],
-            timestamps=[self.outputs_timestamp],
+            timestamps=self.outputs_timestamp,
             return_latest=False
         )
         story_outputs = all_outputs.get(story_id)
@@ -688,132 +712,185 @@ class CIDSEvaluator(BaseEvaluator):
                 results.update({f"shot-{shot_id}": shot_results})
                 continue
 
-            # Fresh computation for new shot
-            for char in shot['character_key']:
-                enc_name = self._get_encoder_name(Characters[char]["tag"])
+            # Prepare shared structures for Hungarian matching
+            shot_chars = shot['character_key']
+            if not shot_chars:
+                continue
+            for char in shot_chars:
                 if char not in char_pil_imgs:
                     char_pil_imgs[char] = []
-                boxes, logits, phrases, annotated_frame = self.dino_detect(target_img_path, TEXT_PROMPT[char])
 
+            per_char_topk = max(1, int(self.topk_per_nochar)) if hasattr(self, "topk_per_nochar") else 1
+            candidate_boxes = []
+            candidate_crops = []
+            for prompt_char in shot_chars:
+                boxes, logits, _, _ = self.dino_detect(target_img_path, TEXT_PROMPT[prompt_char])
                 if len(logits) == 0:
+                    continue
+                topk = min(len(logits), per_char_topk)
+                _, indices = torch.topk(logits, topk)
+                selected_boxes = boxes[indices]
+                cropped_chunk, filtered_boxes = self.crop_img(target_img_path, selected_boxes, return_boxes=True)
+                if not cropped_chunk:
+                    continue
+                if len(filtered_boxes) != len(cropped_chunk):
+                    keep_n = min(len(filtered_boxes), len(cropped_chunk))
+                    cropped_chunk = cropped_chunk[:keep_n]
+                    filtered_boxes = filtered_boxes[:keep_n]
+                candidate_boxes.extend(filtered_boxes)
+                candidate_crops.extend(cropped_chunk)
+
+            if not candidate_crops:
+                for char in shot_chars:
+                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                continue
+
+            boxes = torch.tensor(candidate_boxes, dtype=torch.float32)
+            cropped_imgs = candidate_crops
+
+            num_candidates = len(cropped_imgs)
+            num_chars = len(shot_chars)
+            sim_scores = torch.full((num_chars, num_candidates), -1e6, dtype=torch.float32)
+            char_feat_cache = {}
+            char_sim_cache = {}
+            valid_rows = [False] * num_chars
+
+            # Build similarity matrix row for each character with its dedicated encoder
+            for row_idx, char in enumerate(shot_chars):
+                enc_name = self._get_encoder_name(Characters[char]["tag"])
+                output_feats, valid_indices = self.get_char_feat(
+                    cropped_imgs,
+                    encoder_name=enc_name,
+                    return_indices=True
+                )
+                char_feat_cache[char] = {"features": output_feats, "indices": valid_indices}
+                if output_feats is None or len(valid_indices) == 0:
+                    continue
+
+                out_feats_for_sim = output_feats.to(self.device) if isinstance(output_feats, torch.Tensor) else output_feats
+                ref_feats_for_sim = ref_clip_feats[char].to(self.device) if isinstance(ref_clip_feats[char], torch.Tensor) else ref_clip_feats[char]
+                similarity_matrix = self._compute_multimodel_similarity_matrix(
+                    out_feats_for_sim,
+                    ref_feats_for_sim,
+                    method=self.ensemble_method
+                )
+                if similarity_matrix is None or not isinstance(similarity_matrix, torch.Tensor) or similarity_matrix.numel() == 0:
+                    continue
+
+                similarity_matrix = similarity_matrix.detach().cpu()
+                sim_rows = {cand_idx: similarity_matrix[idx] for idx, cand_idx in enumerate(valid_indices)}
+                char_sim_cache[char] = sim_rows
+                best_scores = similarity_matrix.max(dim=1).values
+                for local_idx, cand_idx in enumerate(valid_indices):
+                    sim_scores[row_idx, cand_idx] = best_scores[local_idx]
+                valid_rows[row_idx] = True
+
+            if not any(valid_rows):
+                for char in shot_chars:
+                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                continue
+
+            sim_np = sim_scores.cpu().numpy()
+            cost_matrix = -sim_np
+            row_ind, col_ind = scipy.optimize.linear_sum_assignment(cost_matrix)
+            assignments = {}
+            for r, c in zip(row_ind, col_ind):
+                if r >= len(shot_chars) or c >= num_candidates:
+                    continue
+                if not valid_rows[r]:
+                    continue
+                assignments[r] = c
+
+            for row_idx, char in enumerate(shot_chars):
+                if row_idx not in assignments:
+                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                    continue
+                boxes_id = assignments[row_idx]
+                if boxes_id >= len(boxes):
                     shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
                     continue
 
-                _, indices = torch.topk(logits, min(len(logits), len(shot['character_key'])))
-                boxes = boxes[indices]
-                cropped_imgs = self.crop_img(target_img_path, boxes)
-                if len(cropped_imgs) != 0:
-                    output_feats = self.get_char_feat(cropped_imgs, encoder_name=enc_name)
-                    if output_feats is None:
-                        shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
-                        continue
-
-                    cosine_sims = {}
-                    for _char in shot['character_key']:
-                        similarity_matrix = self._compute_multimodel_similarity_matrix(
-                            output_feats.cuda() if not isinstance(output_feats, list) else output_feats,
-                            ref_clip_feats[_char].cuda() if not isinstance(ref_clip_feats[_char], list) else ref_clip_feats[_char],
+                boxes_to_write = [round(x, 3) for x in boxes[boxes_id].tolist()]
+                sim_row_map = char_sim_cache.get(char, {})
+                sim_row = sim_row_map.get(boxes_id)
+                if sim_row is not None:
+                    shot_cross_sim = round(sim_row.mean().item(), 4)
+                else:
+                    cache_entry = char_feat_cache.get(char, {})
+                    if isinstance(cache_entry, dict):
+                        output_feats = cache_entry.get("features")
+                        cached_indices = cache_entry.get("indices") or []
+                    else:
+                        output_feats = cache_entry
+                        if isinstance(output_feats, torch.Tensor):
+                            cached_indices = list(range(output_feats.shape[0]))
+                        elif isinstance(output_feats, list):
+                            cached_indices = list(range(len(output_feats)))
+                        else:
+                            cached_indices = []
+                    try:
+                        if output_feats is None or boxes_id not in cached_indices:
+                            raise ValueError("Missing cached features for candidate")
+                        local_idx = cached_indices.index(boxes_id)
+                        if isinstance(output_feats, torch.Tensor):
+                            matched_output_feat = output_feats[local_idx:local_idx+1]
+                        else:
+                            matched_output_feat = [output_feats[local_idx]]
+                        cross_sim_matrix = self._compute_multimodel_similarity_matrix(
+                            matched_output_feat,
+                            ref_clip_feats[char],
                             method=self.ensemble_method
                         )
-                        cosine_sims.update({_char: similarity_matrix.max(dim=1).values.cpu()})
+                        shot_cross_sim = round(cross_sim_matrix.mean().item(), 4) if isinstance(cross_sim_matrix, torch.Tensor) and cross_sim_matrix.numel() > 0 else 0.0
+                    except Exception as e:
+                        print(f"\033[33mWarning: Failed to compute cross_sim for {char} in shot {shot_id}: {str(e)}\033[0m")
+                        shot_cross_sim = 0.0
 
-                    if char not in cosine_sims.keys():
-                        continue
+                shot_results.update({char: {"box": boxes_to_write, "cross_sim": shot_cross_sim}})
+                char_pil_imgs[char].append(cropped_imgs[boxes_id])
+                cropped_imgs[boxes_id].save(f"{self.mid_result_dir}/shot{shot_id:02d}-{char}.png")
 
-                    sims_bak = cosine_sims[char].tolist()
-                    available_indices = list(range(len(sims_bak)))
-                    matched_flag = False
-
-                    while len(sims_bak) > 0:
-                        local_id = torch.argmax(torch.Tensor(sims_bak)).item()
-                        original_id = available_indices[local_id]
-
-                        conflict_found = False
-                        for _char in shot['character_key']:
-                            if _char != char:
-                                if (original_id < len(cosine_sims[_char]) and
-                                    original_id < len(cosine_sims[char]) and
-                                    cosine_sims[_char][original_id] > cosine_sims[char][original_id]):
-                                    conflict_found = True
-                                    break
-
-                        if not conflict_found:
-                            matched_flag = True
-                            boxes_id = original_id
-                            break
-
-                        sims_bak.pop(local_id)
-                        available_indices.pop(local_id)
-
-                    if matched_flag:
-                        boxes_to_write = [round(x, 3) for x in boxes[boxes_id].tolist()]
-                        try:
-                            matched_output_feat = output_feats[boxes_id:boxes_id+1] if not isinstance(output_feats, list) else [output_feats[boxes_id]]
-                            cross_sim_matrix = self._compute_multimodel_similarity_matrix(
-                                matched_output_feat,
-                                ref_clip_feats[char],
-                                method=self.ensemble_method
-                            )
-                            shot_cross_sim = round(cross_sim_matrix.mean().item(), 4) if cross_sim_matrix.numel() > 0 else 0.0
-                        except Exception as e:
-                            print(f"\033[33mWarning: Failed to compute cross_sim for {char} in shot {shot_id}: {str(e)}\033[0m")
-                            shot_cross_sim = 0.0
-
-                        shot_results.update({char: {"box": boxes_to_write, "cross_sim": shot_cross_sim}})
-                        char_pil_imgs[char].append(cropped_imgs[boxes_id])
-                        cropped_imgs[boxes_id].save(f"{self.mid_result_dir}/shot{shot_id:02d}-{char}.png")
-
-                        # Single-character action alignment via GPT-V (only for matched characters)
-                        if pa_available and single_prompt_text:
+                # Single-character action alignment via GPT-V (only for matched characters)
+                if pa_available and single_prompt_text:
+                    try:
+                        prompt_text = shot.get('script') or shot.get('character_action') or shot.get('action') or shot.get('description') or ''
+                        user_content = [
+                            {"type": "text", "text": prompt_text},
+                            {"type": "text", "text": f"Evaluated Character Name is {Characters[char]['name']}"},
+                            load_img_content(cropped_imgs[boxes_id], image_mode='pil')
+                        ]
+                        transcript = [{"role": "system", "content": [{"type": "text", "text": single_prompt_text}]}, {"role": "user", "content": user_content}]
+                        import re
+                        max_retry = 10
+                        temp_start = 0.0
+                        score_val = 0
+                        while max_retry > 0:
                             try:
-                                # Fallback to closest action/script field
-                                prompt_text = shot.get('script') or shot.get('character_action') or shot.get('action') or shot.get('description') or ''
-                                # Compose user content
-                                user_content = [
-                                    {"type": "text", "text": prompt_text},
-                                    {"type": "text", "text": f"Evaluated Character Name is {Characters[char]['name']}"},
-                                    load_img_content(cropped_imgs[boxes_id], image_mode='pil')
-                                ]
-                                transcript = [{"role":"system","content":[{"type": "text", "text": single_prompt_text}]},{"role": "user", "content": user_content}]
-                                # Local retry with temperature escalation
-                                import re
-                                max_retry = 10
-                                temp_start = 0.0
-                                score_val = 0
-                                while max_retry > 0:
-                                    try:
-                                        response = gptv_query(
-                                            transcript,
-                                            top_p=0.2,
-                                            temp=temp_start,
-                                            model_type=model_type,
-                                            api_key=api_key,
-                                            base_url=base_url,
-                                        )
-                                        pattern = r"(score|Score):\s*[a-zA-Z]*\s*(\d+)"
-                                        matches = re.findall(pattern, response)
-                                        if matches:
-                                            score_val = int(matches[0][1])
-                                            break
-                                        else:
-                                            temp_start += 0.1
-                                            max_retry -= 1
-                                    except Exception as e:
-                                        print(f"\033[33mWarning: single_character_action scoring failed for story {story_id}, shot {shot_id}, char {char}: {e}\033[0m")
-                                        temp_start += 0.1
-                                        max_retry -= 1
-                                # Record character-level score using real character name
-                                pa_char_scores[Characters[char]['name']] = int(score_val)
-                            except Exception as _e:
-                                print(f"\033[33mWarning: single_character_action internal error for story {story_id}, shot {shot_id}, char {char}: {_e}\033[0m")
-                        else:
-                            pa_char_scores[Characters[char]['name']] = 0
-
-                    else:
-                        shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
-
+                                response = gptv_query(
+                                    transcript,
+                                    top_p=0.2,
+                                    temp=temp_start,
+                                    model_type=model_type,
+                                    api_key=api_key,
+                                    base_url=base_url,
+                                )
+                                pattern = r"(score|Score):\s*[a-zA-Z]*\s*(\d+)"
+                                matches = re.findall(pattern, response)
+                                if matches:
+                                    score_val = int(matches[0][1])
+                                    break
+                                else:
+                                    temp_start += 0.1
+                                    max_retry -= 1
+                            except Exception as e:
+                                print(f"\033[33mWarning: single_character_action scoring failed for story {story_id}, shot {shot_id}, char {char}: {e}\033[0m")
+                                temp_start += 0.1
+                                max_retry -= 1
+                        pa_char_scores[Characters[char]['name']] = int(score_val)
+                    except Exception as _e:
+                        print(f"\033[33mWarning: single_character_action internal error for story {story_id}, shot {shot_id}, char {char}: {_e}\033[0m")
                 else:
-                    shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                    pa_char_scores[Characters[char]['name']] = 0
 
             # OCCM for new shot
             E = len(shot['character_key'])

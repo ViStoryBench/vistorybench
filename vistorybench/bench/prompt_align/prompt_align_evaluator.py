@@ -88,7 +88,7 @@ class PromptAlignEvaluator(BaseEvaluator):
             methods=[method],
             modes=[self.mode],
             languages=[self.language],
-            timestamps=[self.outputs_timestamp],
+            timestamps=self.outputs_timestamp,
             return_latest=False
         )
         story_outputs = all_outputs.get(story_id)
@@ -108,10 +108,14 @@ class PromptAlignEvaluator(BaseEvaluator):
 
         shots = [shot for shot in story_data['shots'] if image_paths.get(int(shot['index']))]
 
-        # Local worker for a single shot
-        def eval_one(shot, image_path):
+        # Local worker for a single shot (makes sure image path is located by shot index)
+        def eval_one(shot):
             try:
-                shot_index = shot['index']
+                shot_index = int(shot['index'])
+                image_path = image_paths.get(shot_index)
+                if not image_path:
+                    return shot_index, {}
+
                 shot_scores = {}
                 prompts = {
                     "scene": shot['scene'],
@@ -123,22 +127,30 @@ class PromptAlignEvaluator(BaseEvaluator):
                     shot_scores[dim] = score
                 return shot_index, shot_scores
             except Exception as e:
-                print(f"Error evaluating shot for {story_id} at image {image_path}: {e}")
+                print(f"Error evaluating shot for {story_id}: {e}")
                 return shot.get('index', -1), {}
 
+        worker_count = getattr(self, "workers", 1) or 1
+
+        def record_scores(result):
+            shot_index, shot_scores = result
+            if shot_index is None or shot_index == -1 or not shot_scores:
+                return
+            all_shots_scores[shot_index] = shot_scores
+            for dim in ("scene", "character_action", "camera"):
+                if dim in shot_scores:
+                    total_scores[dim].append(shot_scores[dim])
+
         # Parallel or serial execution
-        if  getattr(self, "workers", 1) and self.workers > 1:
-            print(f"PromptAlign: evaluating {len(shots)} shots in parallel with {self.workers} workers.")
-            with ThreadPoolExecutor(max_workers=self.workers) as ex:
-                futures = [ex.submit(eval_one, shot, img_path) for shot, img_path in zip(shots, image_paths.values())]
+        if worker_count > 1:
+            print(f"PromptAlign: evaluating {len(shots)} shots in parallel with {worker_count} workers.")
+            with ThreadPoolExecutor(max_workers=worker_count) as ex:
+                futures = [ex.submit(eval_one, shot) for shot in shots]
                 for fut in as_completed(futures):
-                    shot_index, shot_scores = fut.result()
-                    if shot_index is None or shot_index == -1:
-                        continue
-                    all_shots_scores[shot_index] = shot_scores
-                    for dim in ("scene", "character_action", "camera"):
-                        if dim in shot_scores:
-                            total_scores[dim].append(shot_scores[dim])
+                    record_scores(fut.result())
+        else:
+            for shot in shots:
+                record_scores(eval_one(shot))
 
         avg_scores = {dim: (sum(scores) / len(scores) if scores else 0) for dim, scores in total_scores.items()}
         
