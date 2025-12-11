@@ -98,6 +98,18 @@ class MultiModelFeatures:
         return None
 
 class CIDSEvaluator(BaseEvaluator):
+    _shared_model_cache = {}
+
+    def _apply_model_bundle(self, bundle):
+        """Attach cached heavy models to this evaluator instance."""
+        self.dino = bundle.get('dino')
+        self.clip = bundle.get('clip')
+        self.clip_processor = bundle.get('clip_processor')
+        self.arcface = bundle.get('arcface')
+        self.arcface_provider = bundle.get('arcface_provider')
+        self.facenet = bundle.get('facenet')
+        self.adaface = bundle.get('adaface')
+
     def __init__(self, config: dict, timestamp: str, mode: str, language: str, outputs_timestamp=None):
         super().__init__(config, timestamp, mode, language, outputs_timestamp)
 
@@ -112,7 +124,7 @@ class CIDSEvaluator(BaseEvaluator):
         # Evaluator-specific config
         self.cids_cfg = self.get_evaluator_config('cids')
         self.ref_mode = self.cids_cfg.get('ref_mode', 'origin')
-        self.use_multi_face_encoder = self.cids_cfg.get('use_multi_face_encoder', False)
+        self.use_multi_face_encoder = self.cids_cfg.get('use_multi_face_encoder', True)
         self.ensemble_method = self.cids_cfg.get('ensemble_method', 'average')
         
         dino = self.cids_cfg.get('detection', {}).get('dino', {})
@@ -155,63 +167,94 @@ class CIDSEvaluator(BaseEvaluator):
         """Load all models required for CIDS evaluation."""
         pretrain_path = Path(pretrain_path)
 
-        # Load GroundingDINO
-        try:
-            # Correctly reference the config within the bench/content directory
-            gd_config = os.path.join(os.path.dirname(__file__), 'GroundingDINO_SwinT_OGC.py')
-            gd_weights = pretrain_path / 'groundingdino/weights/groundingdino_swint_ogc.pth'
-            self.dino = load_model(str(gd_config), str(gd_weights)).to(device)
-            print("GroundingDINO model loaded successfully")
-        except Exception as e:
-            print(f"Could not load GroundingDINO model: {e}")
-            self.dino = None
+        clip_model_id = "openai/clip-vit-large-patch14"
+        if isinstance(self.cids_cfg, dict):
+            enc = self.cids_cfg.get('encoders')
+            if isinstance(enc, dict) and 'clip' in enc and 'model_id' in enc['clip']:
+                clip_model_id = enc['clip']['model_id']
 
-        # Load CLIP
-        try:
-            clip_model_id = "openai/clip-vit-large-patch14"
-            if isinstance(self.cids_cfg, dict):
-                enc = self.cids_cfg.get('encoders')
-                if isinstance(enc, dict) and 'clip' in enc and 'model_id' in enc['clip']:
-                    clip_model_id = enc['clip']['model_id']
-            self.clip = CLIPModel.from_pretrained(pretrain_path / clip_model_id).to(device)
-            self.clip_processor = CLIPProcessor.from_pretrained(pretrain_path / clip_model_id)
-            print("CLIP model loaded successfully")
-        except Exception as e:
-            print(f"Could not load CLIP model: {e}")
-            self.clip = None
-            self.clip_processor = None
+        cache_key = (str(pretrain_path.resolve()), str(device), clip_model_id)
+        cached_bundle = self._shared_model_cache.get(cache_key)
 
-        # Load ArcFace
-        try:
-            arc_name = "antelopev2"
-            arc_providers = ['CUDAExecutionProvider']
-            ctx_id = 0
-            det0 = self.arcface_det_thresh_initial
-            self.arcface = insightface.app.FaceAnalysis(root=pretrain_path / 'insightface', name=arc_name, providers=arc_providers)
-            self.arcface.prepare(ctx_id=ctx_id, det_thresh=det0)
-            print("ArcFace model loaded successfully")
-        except Exception as e:
-            print(f"Could not load ArcFace model: {e}")
-            self.arcface = None
+        if cached_bundle:
+            self._apply_model_bundle(cached_bundle)
+            print(f"Reusing cached CIDS models for device {device} (pretrain: {pretrain_path})")
+        else:
+            bundle = {}
 
-        # Load FaceNet
-        try:
-            self.facenet = InceptionResnetV1(pretrained='vggface2', pretrained_path=pretrain_path).eval().to(device)
-            print("FaceNet model loaded successfully")
-        except Exception as e:
-            print(f"Could not load FaceNet model: {e}")
-            self.facenet = None
+            # Load GroundingDINO
+            try:
+                gd_config = os.path.join(os.path.dirname(__file__), 'GroundingDINO_SwinT_OGC.py')
+                gd_weights = pretrain_path / 'groundingdino/weights/groundingdino_swint_ogc.pth'
+                bundle['dino'] = load_model(str(gd_config), str(gd_weights)).to(device)
+                print("GroundingDINO model loaded successfully")
+            except Exception as e:
+                print(f"Could not load GroundingDINO model: {e}")
+                bundle['dino'] = None
 
-        # Load AdaFace
-        try:
-            model_key = 'ir_101'
-            ada_ckpt = str(pretrain_path / 'adaface/adaface_ir101_webface12m.ckpt')
-            adaface_models[model_key] = ada_ckpt
-            self.adaface = load_pretrained_model(model_key).to(device)
-            print("AdaFace model loaded successfully")
-        except Exception as e:
-            print(f"Could not load AdaFace model: {e}")
-            self.adaface = None
+            # Load CLIP
+            try:
+                clip_path = pretrain_path / clip_model_id
+                bundle['clip'] = CLIPModel.from_pretrained(clip_path).to(device)
+                bundle['clip_processor'] = CLIPProcessor.from_pretrained(clip_path)
+                print("CLIP model loaded successfully")
+            except Exception as e:
+                print(f"Could not load CLIP model: {e}")
+                bundle['clip'] = None
+                bundle['clip_processor'] = None
+
+            # Load ArcFace
+            arcface_model = None
+            arcface_provider = None
+
+            def _init_arcface(providers, ctx_id):
+                model = insightface.app.FaceAnalysis(
+                    root=pretrain_path / 'insightface',
+                    name="antelopev2",
+                    providers=providers
+                )
+                model.prepare(ctx_id=ctx_id, det_thresh=self.arcface_det_thresh_initial)
+                return model
+
+            try:
+                arcface_model = _init_arcface(['CUDAExecutionProvider'], ctx_id=0)
+                arcface_provider = 'cuda'
+                print("ArcFace model loaded successfully")
+            except Exception as e:
+                print(f"Could not load ArcFace model on CUDA: {e}")
+                try:
+                    arcface_model = _init_arcface(['CPUExecutionProvider'], ctx_id=-1)
+                    arcface_provider = 'cpu'
+                    print("ArcFace model loaded on CPU fallback")
+                except Exception as cpu_e:
+                    print(f"Could not load ArcFace model on CPU either: {cpu_e}")
+                    arcface_model = None
+                    arcface_provider = None
+
+            bundle['arcface'] = arcface_model
+            bundle['arcface_provider'] = arcface_provider
+
+            # Load FaceNet
+            try:
+                bundle['facenet'] = InceptionResnetV1(pretrained='vggface2', pretrained_path=pretrain_path).eval().to(device)
+                print("FaceNet model loaded successfully")
+            except Exception as e:
+                print(f"Could not load FaceNet model: {e}")
+                bundle['facenet'] = None
+
+            # Load AdaFace
+            try:
+                model_key = 'ir_101'
+                ada_ckpt = str(pretrain_path / 'adaface/adaface_ir101_webface12m.ckpt')
+                adaface_models[model_key] = ada_ckpt
+                bundle['adaface'] = load_pretrained_model(model_key).to(device)
+                print("AdaFace model loaded successfully")
+            except Exception as e:
+                print(f"Could not load AdaFace model: {e}")
+                bundle['adaface'] = None
+
+            self._shared_model_cache[cache_key] = bundle
+            self._apply_model_bundle(bundle)
 
         # Initialize FaceRestoreHelper
         try:
@@ -237,9 +280,13 @@ class CIDSEvaluator(BaseEvaluator):
 
     def _get_arcface_features(self, img_np, det_thresh=None):
         """Extract facial features using ArcFace model"""
+        if self.arcface is None:
+            return None
+
+        ctx_id = 0 if self.arcface_provider != 'cpu' else -1
         curr_thresh = det_thresh if det_thresh is not None else self.arcface_det_thresh_initial
         while curr_thresh >= self.arcface_det_thresh_min:
-            self.arcface.prepare(ctx_id=0, det_thresh=curr_thresh)
+            self.arcface.prepare(ctx_id=ctx_id, det_thresh=curr_thresh)
             faces = self.arcface.get(img_np)
             if len(faces) > 0:
                 return torch.from_numpy(faces[0].embedding)
@@ -323,29 +370,31 @@ class CIDSEvaluator(BaseEvaluator):
             image_features = F.normalize(image_features, p=2, dim=1)
 
         elif encoder_name == "arcface":
-            curr_thresh = det_thresh if det_thresh is not None else self.arcface_det_thresh_initial
             image_features = []
             valid_indices = []
-            for idx, _img in enumerate(img):
-                _img_np = cv2.cvtColor(np.array(_img), cv2.COLOR_RGB2BGR)
-                while(True):
-                    if curr_thresh < self.arcface_det_thresh_min:
-                        break
-                    self.arcface.prepare(ctx_id=0, det_thresh=curr_thresh)
-                    _img_faces = self.arcface.get(_img_np)
-                    if len(_img_faces) > 0:
-                        image_features.append(torch.from_numpy(_img_faces[0].embedding))
-                        valid_indices.append(idx)
-                        break
-                    else:
-                        _img.save(f"{self.mid_result_dir}/bad_case.png")
-                        print(f"No face detected, auto re-try, curr_thresh: {curr_thresh}")
-                        curr_thresh -= self.arcface_det_thresh_step
-            if image_features:
-                image_features = torch.stack(image_features, dim=0)
-                image_features = F.normalize(image_features, p=2, dim=1)
-            else:
+
+            if self.arcface is None:
+                print("ArcFace model is unavailable; skipping arcface feature extraction.")
                 image_features = None
+            else:
+                for idx, _img in enumerate(img):
+                    _img_np = cv2.cvtColor(np.array(_img), cv2.COLOR_RGB2BGR)
+                    feat = self._get_arcface_features(_img_np, det_thresh)
+                    if feat is not None:
+                        image_features.append(feat)
+                        valid_indices.append(idx)
+                    else:
+                        try:
+                            _img.save(f"{self.mid_result_dir}/bad_case.png")
+                        except Exception:
+                            pass
+                        print("No face detected for current image even after lowering thresholds.")
+
+                if image_features:
+                    image_features = torch.stack(image_features, dim=0)
+                    image_features = F.normalize(image_features, p=2, dim=1)
+                else:
+                    image_features = None
 
         elif encoder_name == "face_mix":
             all_multi_features = []
@@ -612,11 +661,11 @@ class CIDSEvaluator(BaseEvaluator):
 
         # Load references
         ref_clip_feats = {}
-        ref_dino_feats = {}
         for char in CHARACTER:
             enc_name = self._get_encoder_name(Characters[char]["tag"])
             ch_name = Characters[char]['name']
             input_ref_imgs = []
+            ref_feats = None
 
             if self.ref_mode == 'origin':
                 ref_imgs = sorted(glob.glob(os.path.join(REF_PATH[char], '**/*.jpg'), recursive=True))
@@ -665,7 +714,6 @@ class CIDSEvaluator(BaseEvaluator):
             assert ref_feats is not None, f"Cant get ref char: {char}, please check. No valid reference images found."
             ref_clip_feats[char] = ref_feats
 
-
         results = {"cids": {}}
         char_pil_imgs = {}
         occm_scores = []
@@ -682,7 +730,7 @@ class CIDSEvaluator(BaseEvaluator):
         single_prompt_text = None
         if pa_available:
             try:
-                with open(self._pa_prompt_path, 'r') as _pf:
+                with open(self._pa_prompt_path, 'r', encoding='utf-8', errors='replace') as _pf:
                     single_prompt_text = _pf.read()
             except Exception as _e:
                 print(f"\033[33mWarning: failed to read single_character_action prompt file: {_e}\033[0m")
@@ -714,35 +762,38 @@ class CIDSEvaluator(BaseEvaluator):
 
             # Prepare shared structures for Hungarian matching
             shot_chars = shot['character_key']
+            expected_chars = len(shot_chars)
             if not shot_chars:
                 continue
             for char in shot_chars:
                 if char not in char_pil_imgs:
                     char_pil_imgs[char] = []
 
-            per_char_topk = max(1, int(self.topk_per_nochar)) if hasattr(self, "topk_per_nochar") else 1
             candidate_boxes = []
             candidate_crops = []
-            for prompt_char in shot_chars:
-                boxes, logits, _, _ = self.dino_detect(target_img_path, TEXT_PROMPT[prompt_char])
-                if len(logits) == 0:
-                    continue
-                topk = min(len(logits), per_char_topk)
-                _, indices = torch.topk(logits, topk)
+            candidate_count = 0
+            common_prompt = TEXT_PROMPT.get(shot_chars[0], "character") if isinstance(TEXT_PROMPT, dict) else "character"
+            boxes, logits, _, _ = self.dino_detect(target_img_path, common_prompt)
+            if len(logits) > 0:
+                # Use all detected boxes (sorted by confidence) to reflect actual on-screen characters
+                _, indices = torch.sort(logits, descending=True)
                 selected_boxes = boxes[indices]
                 cropped_chunk, filtered_boxes = self.crop_img(target_img_path, selected_boxes, return_boxes=True)
-                if not cropped_chunk:
-                    continue
                 if len(filtered_boxes) != len(cropped_chunk):
                     keep_n = min(len(filtered_boxes), len(cropped_chunk))
                     cropped_chunk = cropped_chunk[:keep_n]
                     filtered_boxes = filtered_boxes[:keep_n]
                 candidate_boxes.extend(filtered_boxes)
                 candidate_crops.extend(cropped_chunk)
+            candidate_count = len(candidate_boxes)
 
             if not candidate_crops:
                 for char in shot_chars:
                     shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                epsilon = 1e-6
+                occm_scores.append(100 * np.exp(-float(abs(candidate_count - expected_chars)) / (epsilon + expected_chars)))
+                results.update({f"shot-{shot_id}": shot_results})
+                new_shot_indices.append(shot_id)
                 continue
 
             boxes = torch.tensor(candidate_boxes, dtype=torch.float32)
@@ -788,6 +839,10 @@ class CIDSEvaluator(BaseEvaluator):
             if not any(valid_rows):
                 for char in shot_chars:
                     shot_results.update({char: {"box": "null", "cross_sim": 0.0}})
+                epsilon = 1e-6
+                occm_scores.append(100 * np.exp(-float(abs(candidate_count - expected_chars)) / (epsilon + expected_chars)))
+                results.update({f"shot-{shot_id}": shot_results})
+                new_shot_indices.append(shot_id)
                 continue
 
             sim_np = sim_scores.cpu().numpy()
@@ -798,6 +853,12 @@ class CIDSEvaluator(BaseEvaluator):
                 if r >= len(shot_chars) or c >= num_candidates:
                     continue
                 if not valid_rows[r]:
+                    continue
+                # 仅接受当前角色具备特征的候选框，避免后续缺失特征
+                char_for_row = shot_chars[r]
+                cache_entry = char_feat_cache.get(char_for_row, {})
+                valid_indices = cache_entry.get("indices") or []
+                if c not in valid_indices:
                     continue
                 assignments[r] = c
 
@@ -892,13 +953,9 @@ class CIDSEvaluator(BaseEvaluator):
                 else:
                     pa_char_scores[Characters[char]['name']] = 0
 
-            # OCCM for new shot
-            E = len(shot['character_key'])
-            try:
-                D = sum(1 for _ch in shot['character_key']
-                        if isinstance(shot_results.get(_ch, {}), dict) and shot_results[_ch].get("box") != "null")
-            except Exception:
-                D = 0
+            # OCCM for new shot: compare expected vs detected character counts
+            E = expected_chars
+            D = candidate_count
             epsilon = 1e-6
             occm_scores.append(100 * np.exp(-float(abs(D - E)) / (epsilon + E)))
 
