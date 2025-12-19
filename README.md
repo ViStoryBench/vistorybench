@@ -452,7 +452,7 @@ The evaluation code for ViStoryBench is released under the [Apache 2.0 License](
 ```bibtex
 @article{zhuang2025vistorybench,
   title={ViStoryBench: Comprehensive Benchmark Suite for Story Visualization}, 
-  author={Cailin Zhuang, Ailin Huang, Wei Cheng, Jingwei Wu, Yaoqi Hu, Jiaqi Liao, Hongyuan Wang, Xinyao Liao, Weiwei Cai, Hengyuan Xu, Xuanyang Zhang, Xianfang Zeng, Zhewei Huang, Gang Yu, Chi Zhang},
+  author={Cailin Zhuang, Ailin Huang, Yaoqi Hu, Jingwei Wu, Wei Cheng, Jiaqi Liao, Hongyuan Wang, Xinyao Liao, Weiwei Cai, Hengyuan Xu, Xuanyang Zhang, Xianfang Zeng, Zhewei Huang, Gang Yu, Chi Zhang},
   journal={arXiv preprint arxiv:2505.24862}, 
   year={2025}
 }
