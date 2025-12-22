@@ -443,7 +443,31 @@ data/bench_results/
 - **`summary.json`**: Contains the averaged scores for all metrics.
 - **`metadata.json`**: Stores metadata about the evaluation run (method, timestamp, etc.).
 - **Metric-specific directories (`cids/`, `csd/`, etc.)**: Contain detailed results for each metric.
+Here is the concise English version for your `README.md`:
 
+## 📅 Changelog
+
+**[2025.12] v1.3.0**
+- Optimized matching algorithm: switched from Greedy to **Hungarian**.
+- Removed dino topk clip logic.
+- Added skip handling for "no story" images.
+
+
+**[2025.11] v1.2.0**
+- Updated pretrain weight source to `ViStoryBench/VistoryBench_pretrain`.
+- Fixed markdown output paths and copy-paste calculation bugs.
+- Added utility functions.
+
+
+**[2025.10] v1.1.0**
+- **Major Refactor**: `bench_run.py` now supports auto-discovery and batch evaluation.
+- **Structure Optimization**: Moved data loading logic to the `dataset_loader` directory.
+- **New Features**: Added support for `full/lite` dataset splits; added OOCM metrics and Single Action Alignment.
+
+
+**[2025.08] v1.0.0**
+- Initial release of ViStoryBench.
+  
 ## 📝 License
 The evaluation code for ViStoryBench is released under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0), while the ViStoryBench dataset is distributed under the [MIT License](https://choosealicense.com/licenses/mit/).
 
