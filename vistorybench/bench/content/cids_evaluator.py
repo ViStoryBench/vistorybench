@@ -1,6 +1,6 @@
 import os
 import glob
-from PIL import Image
+from PIL import Image, ImageOps
 import torch
 import json
 import cv2
@@ -661,11 +661,13 @@ class CIDSEvaluator(BaseEvaluator):
 
         # Load references
         ref_clip_feats = {}
+        ref_copy_paste_feats = {}
         for char in CHARACTER:
             enc_name = self._get_encoder_name(Characters[char]["tag"])
             ch_name = Characters[char]['name']
             input_ref_imgs = []
             ref_feats = None
+            ref_indices = []
 
             if self.ref_mode == 'origin':
                 ref_imgs = sorted(glob.glob(os.path.join(REF_PATH[char], '**/*.jpg'), recursive=True))
@@ -698,21 +700,50 @@ class CIDSEvaluator(BaseEvaluator):
                     print(f"\033[33mNo char: {char} found in {img} with prompt: {TEXT_PROMPT[char]}, please check\033[0m")
 
             if len(input_ref_imgs) > 0:
-                ref_feats = self.get_char_feat(input_ref_imgs, encoder_name=enc_name)
+                ref_feats, ref_indices = self.get_char_feat(
+                    input_ref_imgs,
+                    encoder_name=enc_name,
+                    return_indices=True,
+                )
                 if ref_feats is None:
                     input_ref_imgs = [Image.open(x) for x in ref_imgs]
                     if len(input_ref_imgs) > 0:
-                        ref_feats = self.get_char_feat(input_ref_imgs, encoder_name=enc_name)
+                        ref_feats, ref_indices = self.get_char_feat(
+                            input_ref_imgs,
+                            encoder_name=enc_name,
+                            return_indices=True,
+                        )
             else:
                 print(f"\033[33mNo valid cropped reference images for {char}, trying original images\033[0m")
                 input_ref_imgs = [Image.open(x) for x in ref_imgs]
                 if len(input_ref_imgs) > 0:
-                    ref_feats = self.get_char_feat(input_ref_imgs, encoder_name=enc_name)
+                    ref_feats, ref_indices = self.get_char_feat(
+                        input_ref_imgs,
+                        encoder_name=enc_name,
+                        return_indices=True,
+                    )
                 else:
                     ref_feats = None
 
             assert ref_feats is not None, f"Cant get ref char: {char}, please check. No valid reference images found."
             ref_clip_feats[char] = ref_feats
+            primary_idx = ref_indices[0] if ref_indices else 0
+            primary_ref_img = input_ref_imgs[primary_idx]
+            cp_feats = self.get_char_feat(
+                [primary_ref_img, ImageOps.mirror(primary_ref_img)],
+                encoder_name=enc_name,
+            )
+            if cp_feats is None:
+                raise AssertionError(f"Failed to build copy-paste reference features for {char}.")
+            if isinstance(cp_feats, list):
+                if len(cp_feats) == 1:
+                    cp_feats = [cp_feats[0], cp_feats[0]]
+            elif isinstance(cp_feats, torch.Tensor):
+                if cp_feats.dim() == 1:
+                    cp_feats = cp_feats.unsqueeze(0)
+                if cp_feats.shape[0] == 1:
+                    cp_feats = torch.cat([cp_feats, cp_feats], dim=0)
+            ref_copy_paste_feats[char] = cp_feats
 
         results = {"cids": {}}
         char_pil_imgs = {}
@@ -996,24 +1027,20 @@ class CIDSEvaluator(BaseEvaluator):
                     self_sim = 1.0
                 results["cids"].update({char: {"cross": round(cross_sim, 4), "self": round(self_sim, 4)}})
 
-                ref_count = len(ref_clip_feats[char]) if isinstance(ref_clip_feats[char], list) else ref_clip_feats[char].shape[0]
-                if ref_count > 1:
-                    copy_paste_cnt += 1
-                    cross_sims = self._compute_multimodel_similarity_matrix(
-                        char_feats, ref_clip_feats[char], method=self.ensemble_method
-                    )  # [G, R]
-                    if cross_sims.shape[1] > 1:
-                        # t = ref[0], r = ref[1:]
-                        s_gt = torch.clamp(cross_sims[:, 0], -1.0, 1.0)       # [G]
-                        s_gr = torch.clamp(cross_sims[:, 1:], -1.0, 1.0)       # [G, R-1]
-                        all_sims = torch.cat([s_gt.unsqueeze(1), s_gr], dim=1)  # [G, R]
-                        T = 0.01
-                        probs = torch.softmax(all_sims / T, dim=1)              # [G, R]
-                        copy_scores = probs[:, 0]                                # [G]
-                        char_copy_rate = copy_scores.mean().item()
-                        shot_copy_paste_score += char_copy_rate
-                    else:
-                        copy_paste_cnt -= 1
+                copy_paste_cnt += 1
+                cross_sims = self._compute_multimodel_similarity_matrix(
+                    char_feats,
+                    ref_copy_paste_feats[char],
+                    method=self.ensemble_method,
+                )  # [G, 2]
+                s_orig = torch.clamp(cross_sims[:, 0], -1.0, 1.0)  # [G]
+                s_mirror = torch.clamp(cross_sims[:, 1], -1.0, 1.0)  # [G]
+                all_sims = torch.stack([s_orig, s_mirror], dim=1)  # [G, 2]
+                T = 0.01
+                probs = torch.softmax(all_sims / T, dim=1)  # [G, 2]
+                copy_scores = probs[:, 0]  # [G]
+                char_copy_rate = copy_scores.mean().item()
+                shot_copy_paste_score += char_copy_rate
             else:
                 results["cids"].update({char: {"cross": 0.0, "self": 0.0}})
 
