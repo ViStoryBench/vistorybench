@@ -1,4 +1,4 @@
-# <span style="color: orange">ViStoryBench</span>: A Comprehensive Benchmark Suite for Story Visualization
+# [CVPR 2026] <span style="color: orange">ViStoryBench</span>: A Comprehensive Benchmark Suite for Story Visualization
 
  <a href="https://vistorybench.github.io/"><img src="https://img.shields.io/static/v1?label=Project%20Page&message=Web&color=green"></a> &ensp;
   <a href="https://arxiv.org/abs/2505.24862"><img src="https://img.shields.io/static/v1?label=Tech%20Report&message=Arxiv&color=red"></a> &ensp;
