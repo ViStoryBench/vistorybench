@@ -13,7 +13,8 @@
 https://github.com/user-attachments/assets/19b17deb-416a-400a-b071-df21ba58f4b7
 
 ## 🚩 Latest Updates
-- [ ] **[2026]** 🏆 Ongoing leaderboard maintenance and evaluation of new story visualization methods.
+- [ ] **[now]** 🏆 Ongoing leaderboard maintenance and evaluation of new story visualization methods.
+- [x] **[2026/02/21]** 🔥 CVPR 2026 accepted! See you in Denver!
 - [x] **[2025.12.19]** 📄 arXiv v4 is now available, more recent models are evaluated, including NanoBanana-Pro.
 - [x] **[2025.08.19]** 🛠️ Major code v1 update: Full benchmark implementation released.
 - [x] **[2025.08.12]** 📄 arXiv v3 is now available.
