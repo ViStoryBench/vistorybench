@@ -248,6 +248,8 @@ Save it in the `data/pretrain/groundingdino/weights` folder (Please create it in
 wget -P data/pretrain/groundingdino/weights https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
 ``` -->
 
+> **Note on CIDS copy-paste score**: the current code uses a mirrored reference image when a character has only one reference image (commit `51e2e196823939de63da9d486fe84b653f4a8988`). The scores reported in the paper and on the project homepage were generated before this fix, so rerunning CIDS with the latest code may produce slightly different copy-paste values.
+
 * **b. InsightFace antelopev2**. Download `antelopev2.zip` from [here](https://github.com/deepinsight/insightface/releases/tag/v0.7).
 Unzip it and save them in the `data/pretrain/insightface/models/antelopev2` folder (Please create it in advance).
 
